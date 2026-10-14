@@ -37,6 +37,7 @@ func _ready() -> void:
 	lh.add_child(opt)
 	body.add_child(lp)
 	body.add_child(UI.spacer(30))
+	body.add_child(UI.button("Отчёт об ошибке", _show_report, 24, 70))
 	var reset := UI.button("Сбросить прогресс", _reset_1, 24, 70)
 	UI.tint_button(reset, UI.RED)
 	body.add_child(reset)
@@ -67,6 +68,28 @@ func _apply_setting(key: String, on: bool) -> void:
 func _set_speed(s: int) -> void:
 	Game.set_setting("speed", s)
 	Game.main.goto("settings")
+
+
+func _show_report() -> void:
+	var p := UI.popup(self, "Отчёт об ошибке", "Закрыть")
+	var text: String = CrashLog.latest_report()
+	if CrashLog.report_path != "":
+		p.box.add_child(UI.label("Файл: " + CrashLog.report_path, 16, UI.GOLD))
+	var lines := text.split("\n")
+	var tail := "\n".join(lines.slice(maxi(0, lines.size() - 14)))
+	var sc := UI.scroll()
+	sc.custom_minimum_size = Vector2(0, 420)
+	sc.add_child(UI.label(tail, 16, UI.DIM))
+	p.box.add_child(sc)
+	var copy := UI.button("Скопировать отчёт", Callable(), 28, 80)
+	copy.pressed.connect(_copy_report.bind(copy))
+	UI.tint_button(copy, UI.GOLD)
+	p.box.add_child(copy)
+
+
+func _copy_report(btn: Button) -> void:
+	CrashLog.copy_report()
+	btn.text = "Скопировано!"
 
 
 func _reset_1() -> void:

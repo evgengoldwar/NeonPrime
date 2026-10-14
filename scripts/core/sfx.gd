@@ -48,6 +48,7 @@ func music(pitch: float = 1.0) -> void:
 		return
 	_music.pitch_scale = pitch
 	if not _music.playing:
+		CrashLog.event("музыка")
 		_music.play()
 
 

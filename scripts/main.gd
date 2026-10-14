@@ -37,6 +37,7 @@ func goto(name: String) -> void:
 	if not ResourceLoader.exists(path):
 		push_error("Нет экрана " + name)
 		path = "res://scripts/screens/menu.gd"
+	CrashLog.set_screen(name)
 	var s: Control = load(path).new()
 	UI.full(s)
 	_layer.add_child(s)

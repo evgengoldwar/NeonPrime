@@ -43,7 +43,27 @@ func _ready() -> void:
 	row2.add_child(UI.button("Ежедневное подземелье", func(): Game.main.goto("daily")))
 	row2.add_child(UI.button("Настройки", func(): Game.main.goto("settings")))
 	v.add_child(row2)
+	if CrashLog.crashed_last_time and not CrashLog.report_shown:
+		CrashLog.report_shown = true
+		_show_crash_report.call_deferred()
 	v.add_child(UI.label("ЗАБЕГОВ %d · ПОБЕД %d · УБИТО %d" % [int(Game.meta.runs), int(Game.meta.wins), int(Game.meta.kills)], 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+
+
+## Окно после падения: где лежит отчёт и кнопка, чтобы скопировать его.
+func _show_crash_report() -> void:
+	var p := UI.popup(self, "Игра упала в прошлый раз", "Закрыть")
+	p.box.add_child(UI.label("Отчёт о падении сохранён в файл:", 24))
+	p.box.add_child(UI.label(CrashLog.report_path, 24, UI.GOLD))
+	p.box.add_child(UI.label("Нажми «Скопировать отчёт» и вставь его в сообщение разработчику. Отчёт можно найти и позже: Настройки → Отчёт об ошибке.", 24, UI.DIM))
+	var copy := UI.button("Скопировать отчёт", Callable(), 28, 80)
+	copy.pressed.connect(_copy_report.bind(copy))
+	UI.tint_button(copy, UI.GOLD)
+	p.box.add_child(copy)
+
+
+func _copy_report(btn: Button) -> void:
+	CrashLog.copy_report()
+	btn.text = "Скопировано!"
 
 
 func _new_run() -> void:
