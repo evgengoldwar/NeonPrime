@@ -88,9 +88,11 @@ func _drive(limit: int) -> void:
 				await _battle(scr)
 			"reward":
 				if not Game.pending.get("relics", []).is_empty() and not Game.pending.get("relic_taken", false):
-					scr._take_relic(Game.pending.relics[0])
+					scr._sel_relic = Game.pending.relics[0]
+					scr._take_relic()
 				elif Game.pending.get("cards", []).size() > 0 and Game.rchance(0.7):
-					scr._take_card(Game.pending.cards[0])
+					scr._sel_card = Game.pending.cards[0]
+					scr._take_card()
 				else:
 					scr._skip()
 			"shop":

@@ -20,6 +20,7 @@ const FONT_PATH := "res://assets/fonts/Handjet-Regular.ttf"
 const PIXEL_FONT_PATH := "res://assets/fonts/Tiny5-Regular.ttf"
 const SPR := "res://assets/sprites/"
 const FRAME_MARGIN := 6
+const COLUMN := 720
 
 
 # ---------------------------------------------------------------- ресурсы
@@ -350,8 +351,13 @@ static func ignore_mouse(n: Node) -> void:
 ## Стандартная раскладка экрана: заголовок, прокручиваемое тело, нижняя панель.
 static func screen_layout(root: Control, heading: String, tile: String = "tiles/floor_menu") -> Dictionary:
 	backdrop(root, tile)
+	# Колонка не шире экрана телефона: на широком экране всё остаётся по центру.
 	var m := margin(16)
-	full(m)
+	m.anchor_left = 0.5
+	m.anchor_right = 0.5
+	m.anchor_bottom = 1.0
+	m.offset_left = -COLUMN / 2.0
+	m.offset_right = COLUMN / 2.0
 	root.add_child(m)
 	var v := vbox(14)
 	m.add_child(v)
@@ -466,7 +472,8 @@ static func relic_view(id: String) -> PanelContainer:
 	var p := framed("panel_light", 12)
 	var h := hbox(12)
 	p.add_child(h)
-	var ic := icon("icons/coin" if r.get("weak", false) else "icons/soul", 5)
+	var ic := icon("relics/" + id, 5)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(ic)
 	var v := vbox(4)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -474,6 +481,37 @@ static func relic_view(id: String) -> PanelContainer:
 	v.add_child(label(r.name, 24, GOLD))
 	v.add_child(label(r.text, 16, TEXT))
 	ignore_mouse(p)
+	return p
+
+
+## Откуда реликвия: базовая или из крыла Замка.
+static func relic_origin(id: String) -> String:
+	var set_id: String = Data.relics[id].get("set", "base")
+	if set_id == "base":
+		return "Базовая"
+	for w in Data.wings:
+		if w.id == set_id:
+			return "Крыло «%s»" % w.name
+	return ""
+
+
+## Большая карточка реликвии для выбора награды.
+static func relic_card(id: String, selected: bool, w: int = 212) -> PanelContainer:
+	var r: Dictionary = Data.relics[id]
+	var p := framed("card_selected" if selected else "panel_light", 12)
+	p.custom_minimum_size = Vector2(w, 0)
+	var v := vbox(8)
+	p.add_child(v)
+	var art := framed("popup" if selected else "panel_dark", 6)
+	art.add_child(center(icon("relics/" + id, 7)))
+	v.add_child(art)
+	v.add_child(label(r.name, 24, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var txt := label(r.text, 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(txt)
+	v.add_child(label(relic_origin(id), 16, DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	ignore_mouse(p)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
 	return p
 
 
