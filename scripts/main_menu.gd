@@ -294,7 +294,7 @@ func _open_upgrades() -> void:
 		for id in GameData.UPGRADES.keys():
 			rows.add_child(_upgrade_row(id, refresh))
 	refresh.call()
-	vb.add_child(UI.label("Монеты = очки / 10 за каждую игру", 22, Neon.PURPLE))
+	vb.add_child(UI.label("Монеты собираются на трассе", 22, Neon.PURPLE))
 	_back_button(vb)
 
 

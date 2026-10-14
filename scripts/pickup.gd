@@ -2,7 +2,7 @@ class_name Pickup
 extends Node3D
 ## Floating bonus in one of the 9 lanes; it rides towards the player with the track.
 
-enum Kind { FREEZE, ARMOR, MULTIPLIER }
+enum Kind { FREEZE, ARMOR, MULTIPLIER, COIN }
 
 var kind := Kind.FREEZE
 var cell := Vector2i.ZERO
@@ -17,6 +17,8 @@ static func color_of(k: Kind) -> Color:
 			return Neon.ICE
 		Kind.ARMOR:
 			return Neon.LIME
+		Kind.COIN:
+			return Color(1.0, 0.9, 0.3)
 	return Neon.GOLD
 
 
@@ -84,10 +86,31 @@ func build(k: Kind, c: Vector2i, world_pos: Vector3) -> void:
 			lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			lbl.no_depth_test = true
 			_body.add_child(lbl)
+		Kind.COIN:
+			var mi := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.2
+			cm.bottom_radius = 0.2
+			cm.height = 0.06
+			cm.radial_segments = 8
+			mi.mesh = cm
+			mi.material_override = mat
+			mi.rotation = Vector3(PI / 2.0, 0, 0)
+			_body.add_child(mi)
+			var inner := MeshInstance3D.new()
+			var im := CylinderMesh.new()
+			im.top_radius = 0.1
+			im.bottom_radius = 0.1
+			im.height = 0.08
+			im.radial_segments = 8
+			inner.mesh = im
+			inner.material_override = Neon.glow(Color.WHITE, 3.0)
+			inner.rotation = Vector3(PI / 2.0, 0, 0)
+			_body.add_child(inner)
 	var halo := MeshInstance3D.new()
 	var hm := SphereMesh.new()
-	hm.radius = 0.42
-	hm.height = 0.84
+	hm.radius = 0.3 if k == Kind.COIN else 0.42
+	hm.height = hm.radius * 2.0
 	halo.mesh = hm
 	halo.material_override = Neon.ghost(col, 0.12, 1.0, true)
 	add_child(halo)
@@ -96,7 +119,7 @@ func build(k: Kind, c: Vector2i, world_pos: Vector3) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	_body.rotation.y += delta * 2.2
+	_body.rotation.y += delta * (5.0 if kind == Kind.COIN else 2.2)
 	_body.position.y = sin(_t * 3.0) * 0.06
 	var s := minf(1.0, _t * 5.0)
 	scale = Vector3.ONE * s

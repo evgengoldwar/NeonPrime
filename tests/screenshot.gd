@@ -37,10 +37,13 @@ func _process(_d: float) -> void:
 			node.freeze_time = 0.0
 			_shot("game1")
 		600: _shot("game2")
-		800: _shot("game3")
+		700: node.distance = 497.0
+		760: _shot("game3")
+		900: node.distance = 997.0
 		1000: _shot("game4")
-		1300: _shot("game5")
-		1301: get_tree().quit()
+		1150: node._spawn_gate({"type": "tunnel", "color": Color(1, 0.3, 0.1), "free": Vector2i(1, 1), "length": 9.0})
+		1255: _shot("game5")
+		1256: get_tree().quit()
 	if frames > 110 and frames < 1300 and node.state == node.State.PLAYING:
 		node.has_armor = true
 		if frames % 25 == 0:

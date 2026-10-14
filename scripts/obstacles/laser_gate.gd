@@ -1,36 +1,30 @@
 class_name LaserGate
 extends Obstacle
-## A gate of laser beams across the 3x3 field.
-## Static gates use full rows / columns and always leave a free cell.
-## Rotating gates use blades with an empty hub, so the centre cell is safe.
+## Laser beams across the 3x3 field. cfg.lines: Array of [Vector2 a, Vector2 b]
+## in pivot space. Beams are thin, so they may spin smoothly.
+## Blinking gates follow the music beat; when off they are harmless.
 
 const BEAM_R := 0.06
 
-var color := Neon.RED
-## Segments in pivot space: [Vector2 a, Vector2 b]
 var segments: Array = []
 var _core_mat: StandardMaterial3D
+var _halo_mat: StandardMaterial3D
 var _emit_mat: StandardMaterial3D
 
 
-func build(rng: RandomNumberGenerator, difficulty: float) -> void:
-	roll_spin(rng, difficulty)
+func build(cfg: Dictionary) -> void:
 	depth = 0.15
-	color = [Neon.RED, Neon.MAGENTA, Neon.ORANGE][rng.randi_range(0, 2)]
-	if is_rotating():
-		_pattern_rotating(rng, difficulty)
-	else:
-		_pattern_static(rng, difficulty)
+	segments = cfg["lines"]
 	_core_mat = Neon.glow(color, 6.0)
+	_halo_mat = Neon.ghost(color, 0.3, 1.5, true)
 	_emit_mat = Neon.glow(color, 4.0)
-	var halo_mat := Neon.ghost(color, 0.3, 1.5, true)
 	for s in segments:
 		var a: Vector2 = s[0]
 		var b: Vector2 = s[1]
 		var a3 := Vector3(a.x, a.y, 0)
 		var b3 := Vector3(b.x, b.y, 0)
 		pivot.add_child(Neon.bar(a3, b3, BEAM_R * 2.0, _core_mat))
-		pivot.add_child(Neon.bar(a3, b3, BEAM_R * 6.0, halo_mat))
+		pivot.add_child(Neon.bar(a3, b3, BEAM_R * 6.0, _halo_mat))
 		for e in [a3, b3]:
 			var em := MeshInstance3D.new()
 			var sm := SphereMesh.new()
@@ -42,50 +36,28 @@ func build(rng: RandomNumberGenerator, difficulty: float) -> void:
 			em.material_override = _emit_mat
 			em.position = e
 			pivot.add_child(em)
+	if blink:
+		# Beat marker ring so rhythm lasers are recognisable from afar.
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 2.55
+		tm.outer_radius = 2.62
+		ring.mesh = tm
+		ring.rotation = Vector3(PI / 2.0, 0, 0)
+		ring.material_override = _emit_mat
+		add_child(ring)
 
 
-func _pattern_static(rng: RandomNumberGenerator, difficulty: float) -> void:
-	var safe := Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1))
-	var lines: Array = []
-	for i in [-1, 0, 1]:
-		if i != safe.y:
-			lines.append(["row", i])
-		if i != safe.x:
-			lines.append(["col", i])
-	shuffle(lines, rng)
-	var count := clampi(1 + int(difficulty * 0.6) + rng.randi_range(0, 1), 1, 4)
-	var e := HALF + 0.3
-	for k in count:
-		var l: Array = lines[k]
-		var o: float = l[1] * CELL
-		if l[0] == "row":
-			segments.append([Vector2(-e, o), Vector2(e, o)])
-		else:
-			segments.append([Vector2(o, -e), Vector2(o, e)])
-
-
-func _pattern_rotating(rng: RandomNumberGenerator, difficulty: float) -> void:
-	var e := HALF * 1.45
-	if rng.randf() < 0.65:
-		# Blades with an empty hub.
-		var blades := rng.randi_range(1, 2 if difficulty < 2.0 else 4)
-		var start := rng.randf() * TAU
-		for i in blades:
-			var ang := start + i * TAU / blades
-			var d := Vector2(cos(ang), sin(ang))
-			segments.append([d * 0.8, d * e])
-	else:
-		# Parallel bars offset from the centre.
-		var o := CELL
-		segments.append([Vector2(-e, o), Vector2(e, o)])
-		if rng.randf() < 0.5 + difficulty * 0.1:
-			segments.append([Vector2(-e, -o), Vector2(e, -o)])
-
-
-func set_tint(frozen_look: bool) -> void:
-	var c := Neon.ICE if frozen_look else color
+func set_tint(_frozen_look: bool) -> void:
+	var c := _tint()
 	_core_mat.emission = c
 	_emit_mat.emission = c
+	_halo_mat.albedo_color = Color(c.r * 1.5, c.g * 1.5, c.b * 1.5, _halo_mat.albedo_color.a)
+
+
+func apply_lit(lit_now: bool) -> void:
+	_core_mat.emission_energy_multiplier = 6.0 if lit_now else 0.35
+	_halo_mat.albedo_color.a = 0.3 if lit_now else 0.03
 
 
 func hits_local(p: Vector2, radius: float) -> bool:

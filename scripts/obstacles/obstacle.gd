@@ -2,73 +2,142 @@ class_name Obstacle
 extends Node3D
 ## Base for every gate on the track. Gates lie in the XY plane (the 3x3 field)
 ## and are moved towards the player along +Z by the game.
-## They can stand still, spin around the track axis or swing back and forth.
-## Freezing stops the rotation in whatever state it currently is.
+##
+## Motion rules that keep gates fair:
+## - only thin things (lasers, small blocks) rotate smoothly (SPIN / SWING);
+## - big things (walls, full-size blocks) rotate or slide in 90° / 1-cell
+##   STEPs, so their holes always line up with the cells again;
+## - a STEP never starts right before the gate reaches the player (`locked`).
+## Freezing stops every kind of motion (and blinking) in its current state.
 
-enum Spin { STATIC, SPIN, SWING }
+enum Motion { STATIC, SPIN, SWING, STEP, SLIDE, STEP_SLIDE }
 
 const CELL := 1.2
 const HALF := 1.8
+const TURN_TIME := 0.25
+## Blinking gates are lit for 2 beats out of 4.
+const BLINK_PERIOD := 4
+const BLINK_ON := 2
 
-var spin_mode := Spin.STATIC
-var spin_speed := 1.0  ## rad/s for SPIN, angular frequency for SWING (signed)
-var swing_amplitude := 0.9
+var motion := Motion.STATIC
+var speed := 1.0  ## SPIN rad/s (signed); SWING / SLIDE angular frequency
+var amplitude := 0.9  ## SWING radians; SLIDE world units
+var step_interval := 1.2
+var step_dir := 1
+var slide_axis := Vector2.RIGHT
+var blink := false
+var blink_phase := 0
 ## Thickness along Z used for collision.
 var depth := 0.2
+var color := Neon.MAGENTA
 var passed := false
+## Set by the game when the gate is about to reach the player: no new STEP starts.
+var locked := false
+## Tests force blinking gates to their dangerous state.
+var always_lit := false
+## Non-lethal special gates (e.g. "invert") report an effect when passed.
+var effect := ""
 
 var pivot := Node3D.new()
-var _spin_t := 0.0
+var _t := 0.0
 var _frozen := false
+var _lit := true
+var _tint_frozen := false
 
 
 func _init() -> void:
 	add_child(pivot)
 
 
-## Picks static / spin / swing. Rotating gates must keep the centre cell safe.
-func roll_spin(rng: RandomNumberGenerator, difficulty: float) -> void:
-	var static_chance := clampf(0.6 - difficulty * 0.07, 0.25, 0.6)
-	var roll := rng.randf()
-	if roll < static_chance:
-		spin_mode = Spin.STATIC
-	elif roll < static_chance + (1.0 - static_chance) * 0.55:
-		spin_mode = Spin.SPIN
-		spin_speed = rng.randf_range(0.7, 1.1 + difficulty * 0.15) * (1.0 if rng.randf() < 0.5 else -1.0)
-	else:
-		spin_mode = Spin.SWING
-		spin_speed = rng.randf_range(1.5, 2.2 + difficulty * 0.15)
-		swing_amplitude = rng.randf_range(0.5, 1.3)
-	_spin_t = rng.randf() * 10.0
+func configure(cfg: Dictionary) -> void:
+	var m: Dictionary = cfg.get("motion", {})
+	motion = m.get("type", Motion.STATIC)
+	speed = m.get("speed", 1.0)
+	amplitude = m.get("amplitude", 0.9)
+	step_interval = m.get("interval", 1.2)
+	step_dir = m.get("dir", 1)
+	slide_axis = m.get("axis", Vector2.RIGHT)
+	_t = m.get("t0", 0.0)
+	blink = cfg.get("blink", false)
+	blink_phase = cfg.get("blink_phase", 0)
+	color = cfg.get("color", color)
+	build(cfg)
 	_update_pivot()
+	_update_lit()
+	set_tint(false)
 
 
-func is_rotating() -> bool:
-	return spin_mode != Spin.STATIC
+## Subclasses create their visuals here.
+func build(_cfg: Dictionary) -> void:
+	pass
 
 
 func set_frozen(frozen: bool) -> void:
 	_frozen = frozen
+	if frozen != _tint_frozen:
+		_tint_frozen = frozen
+		set_tint(frozen)
 
 
 func step(delta: float) -> void:
-	if spin_mode != Spin.STATIC and not _frozen:
-		_spin_t += delta
+	if _frozen:
+		return
+	var nt := _t + delta
+	if locked and (motion == Motion.STEP or motion == Motion.STEP_SLIDE):
+		if _turn_frac(nt) > 0.0 and _turn_frac(_t) <= 0.0:
+			nt = _t  # Hold: never start turning right in front of the player.
+	_t = nt
+	if motion != Motion.STATIC:
 		_update_pivot()
+	_update_lit()
+
+
+func is_lit() -> bool:
+	return always_lit or not blink or _lit
+
+
+func _update_lit() -> void:
+	if not blink:
+		return
+	var lit := posmod(Sfx.beat_index() + blink_phase, BLINK_PERIOD) < BLINK_ON
+	if lit != _lit:
+		_lit = lit
+		apply_lit(lit)
+
+
+## 0 while holding, 0..1 during the quick turn at the end of each interval.
+func _turn_frac(t: float) -> float:
+	var f := fmod(t, step_interval) - (step_interval - TURN_TIME)
+	return clampf(f / TURN_TIME, 0.0, 1.0)
 
 
 func _update_pivot() -> void:
 	var angle := 0.0
-	match spin_mode:
-		Spin.SPIN:
-			angle = _spin_t * spin_speed
-		Spin.SWING:
-			angle = sin(_spin_t * spin_speed) * swing_amplitude
+	var offset := Vector2.ZERO
+	match motion:
+		Motion.SPIN:
+			angle = _t * speed
+		Motion.SWING:
+			angle = sin(_t * speed) * amplitude
+		Motion.STEP:
+			var k := floorf(_t / step_interval)
+			angle = (k + smoothstep(0.0, 1.0, _turn_frac(_t))) * PI / 2.0 * step_dir
+		Motion.SLIDE:
+			offset = slide_axis * sin(_t * speed) * amplitude
+		Motion.STEP_SLIDE:
+			var seq := [0.0, 1.0, 0.0, -1.0]
+			var k := int(floorf(_t / step_interval))
+			var a: float = seq[k % 4]
+			var b: float = seq[(k + 1) % 4]
+			offset = slide_axis * lerpf(a, b, smoothstep(0.0, 1.0, _turn_frac(_t))) * CELL * step_dir
+	pivot.position = Vector3(offset.x, offset.y, 0)
 	pivot.rotation = Vector3(0, 0, angle)
 
 
 ## world_point is tested only while the gate overlaps the player's Z.
 func hits(world_point: Vector3, radius: float) -> bool:
+	if not is_lit():
+		return false
 	var lp := pivot.global_transform.affine_inverse() * world_point
 	if absf(lp.z) > depth * 0.5 + radius:
 		return false
@@ -79,7 +148,19 @@ func hits_local(_p: Vector2, _radius: float) -> bool:
 	return false
 
 
-## Cells used by the generator: index -1..1 on each axis.
+func set_tint(_frozen_look: bool) -> void:
+	pass
+
+
+func apply_lit(_lit_now: bool) -> void:
+	pass
+
+
+func _tint() -> Color:
+	return Neon.ICE if _tint_frozen else color
+
+
+## Cells use index -1..1 on each axis.
 static func all_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
 	for x in [-1, 0, 1]:
@@ -88,7 +169,7 @@ static func all_cells() -> Array[Vector2i]:
 	return cells
 
 
-static func shuffle(arr: Array, rng: RandomNumberGenerator) -> void:
+static func shuffle_array(arr: Array, rng: RandomNumberGenerator) -> void:
 	for i in range(arr.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
 		var tmp = arr[i]
@@ -96,5 +177,11 @@ static func shuffle(arr: Array, rng: RandomNumberGenerator) -> void:
 		arr[j] = tmp
 
 
-func set_tint(_frozen_look: bool) -> void:
-	pass
+static func frame(parent: Node3D, center: Vector3, size: float, mat: Material, t: float) -> void:
+	var h := size * 0.5
+	var pts: Array[Vector3] = [
+		center + Vector3(-h, -h, 0), center + Vector3(h, -h, 0),
+		center + Vector3(h, h, 0), center + Vector3(-h, h, 0),
+	]
+	for i in 4:
+		parent.add_child(Neon.bar(pts[i], pts[(i + 1) % 4], t, mat))

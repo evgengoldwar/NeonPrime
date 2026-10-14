@@ -7,12 +7,13 @@ signal settings_changed
 const SAVE_PATH := "user://neonprime_save.cfg"
 const MAX_LEADERS := 10
 const MAX_UPGRADE_LEVEL := 5
-const UPGRADE_COSTS: Array[int] = [60, 150, 300, 550, 900]
+## Coins are rare pickups on the track, so upgrades are priced in tens.
+const UPGRADE_COSTS: Array[int] = [10, 25, 50, 90, 150]
 
 const UPGRADES := {
 	"freeze": {
 		"title": "Заморозка",
-		"desc": "Уровень перестаёт вращаться. +1 сек за уровень",
+		"desc": "Ворота замирают: не крутятся, не двигаются, не мигают. +1 сек за уровень",
 		"color": Color(0.55, 0.85, 1.0),
 	},
 	"armor": {
@@ -99,11 +100,15 @@ func buy_upgrade(id: String) -> bool:
 
 # --- Results --------------------------------------------------------------
 
-## Stores a finished run. Returns the number of coins earned.
-func submit_score(score: int) -> int:
+## Called for every coin picked up on the track.
+func add_coin(amount := 1) -> void:
+	coins += amount
+	coins_changed.emit(coins)
+
+
+## Stores a finished run (coins are already added during the run).
+func submit_score(score: int) -> void:
 	games_played += 1
-	var earned := score / 10
-	coins += earned
 	if score > best_score:
 		best_score = score
 	if score > 0:
@@ -115,9 +120,7 @@ func submit_score(score: int) -> int:
 		leaderboard.sort_custom(func(a, b): return int(a["score"]) > int(b["score"]))
 		if leaderboard.size() > MAX_LEADERS:
 			leaderboard.resize(MAX_LEADERS)
-	coins_changed.emit(coins)
 	save_game()
-	return earned
 
 
 func set_setting(key: String, value) -> void:

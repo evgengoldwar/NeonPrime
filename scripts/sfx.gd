@@ -1,6 +1,8 @@
 extends Node
-## Autoload: procedurally synthesised sound effects and a looping synthwave track.
-## No audio files are needed - everything is generated at startup.
+## Autoload: procedurally synthesised sound effects and looping synthwave
+## tracks (one per zone). No audio files are needed - everything is generated
+## at startup; the extra tracks are rendered on worker threads.
+## beat_index() lets gates blink in time with the music.
 
 const RATE := 22050
 const VOICES := 8
@@ -8,7 +10,19 @@ const VOICES := 8
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
+## Per-zone tracks: bpm, chord roots (midi, one per bar), arpeggio, lead wave.
+const TRACKS := [
+	{"bpm": 112.0, "roots": [45, 45, 41, 41, 48, 48, 43, 43], "arp": [0, 7, 12, 15, 12, 7, 3, 7], "lead": "square"},
+	{"bpm": 120.0, "roots": [38, 38, 34, 34, 41, 41, 36, 36], "arp": [0, 3, 7, 10, 12, 10, 7, 3], "lead": "tri"},
+	{"bpm": 128.0, "roots": [40, 40, 40, 40, 43, 43, 38, 38], "arp": [0, 12, 7, 12, 3, 12, 7, 12], "lead": "saw"},
+]
+
 var _music: AudioStreamPlayer
+var _music_b: AudioStreamPlayer
+var _tracks: Array = [null, null, null]
+var _track := 0
+var _clock := 0.0
+var _tasks: Array[int] = []
 
 
 func _ready() -> void:
@@ -19,6 +33,8 @@ func _ready() -> void:
 		_players.append(p)
 	_music = AudioStreamPlayer.new()
 	add_child(_music)
+	_music_b = AudioStreamPlayer.new()
+	add_child(_music_b)
 
 	_streams["move"] = _tone([[660.0, 990.0]], 0.07, "square", 0.25)
 	_streams["depth"] = _tone([[440.0, 660.0]], 0.09, "square", 0.25)
@@ -33,10 +49,60 @@ func _ready() -> void:
 	_streams["buy"] = _tone([[523.0, 523.0], [659.0, 659.0], [784.0, 784.0], [1046.0, 1046.0]], 0.3, "sine", 0.35)
 	_streams["laser"] = _tone([[1400.0, 300.0]], 0.18, "saw", 0.12)
 
-	_music.stream = _make_music()
+	_tracks[0] = _make_music(TRACKS[0])
+	for i in range(1, TRACKS.size()):
+		var data: Dictionary = TRACKS[i]
+		_tasks.append(WorkerThreadPool.add_task(func():
+			var wav := _make_music(data)
+			_store_track.call_deferred(i, wav)))
+	_music.stream = _tracks[0]
 	_apply_volume()
 	GameData.settings_changed.connect(_apply_volume)
 	_music.play()
+
+
+func _store_track(index: int, wav: AudioStreamWAV) -> void:
+	_tracks[index] = wav
+
+
+func _exit_tree() -> void:
+	for id in _tasks:
+		WorkerThreadPool.wait_for_task_completion(id)
+
+
+func _process(delta: float) -> void:
+	_clock += delta
+
+
+## Switches to another zone track with a short crossfade.
+func set_track(index: int) -> void:
+	index = index % TRACKS.size()
+	if index == _track or _tracks[index] == null:
+		return
+	_track = index
+	var old := _music
+	_music = _music_b
+	_music_b = old
+	_music.stream = _tracks[index]
+	_music.volume_db = -40.0
+	_music.play()
+	var t := create_tween().set_parallel(true)
+	t.tween_property(_music, "volume_db", _music_volume_db(), 1.2)
+	t.tween_property(old, "volume_db", -60.0, 1.2)
+	t.chain().tween_callback(old.stop)
+
+
+## Current beat number of the playing track (falls back to a clock).
+func beat_index() -> int:
+	var bpm: float = TRACKS[_track]["bpm"]
+	var pos := _clock
+	if _music.playing:
+		pos = _music.get_playback_position() + AudioServer.get_time_since_last_mix()
+	return int(floorf(pos * bpm / 60.0))
+
+
+func _music_volume_db() -> float:
+	return linear_to_db(maxf(float(GameData.settings["music_volume"]) * 0.6, 0.0001))
 
 
 func play(sfx_name: String, pitch := 1.0) -> void:
@@ -53,8 +119,7 @@ func _apply_volume() -> void:
 	var sv := float(GameData.settings["sfx_volume"])
 	for p in _players:
 		p.volume_db = linear_to_db(maxf(sv, 0.0001))
-	var mv := float(GameData.settings["music_volume"])
-	_music.volume_db = linear_to_db(maxf(mv * 0.6, 0.0001))
+	_music.volume_db = _music_volume_db()
 
 
 # --- Synthesis ------------------------------------------------------------
@@ -104,16 +169,17 @@ func _noise(length: float, volume: float) -> AudioStreamWAV:
 	return _wav(data)
 
 
-func _make_music() -> AudioStreamWAV:
+func _make_music(track: Dictionary) -> AudioStreamWAV:
 	# 8 bars of a minor synthwave arpeggio with a pulsing bass and soft kick.
-	var bpm := 112.0
+	var bpm: float = track["bpm"]
 	var step := 60.0 / bpm / 4.0  # sixteenth note
 	var steps := 128
 	var n := int(step * steps * RATE)
 	var data := PackedByteArray()
 	data.resize(n * 2)
-	var roots := [45, 45, 41, 41, 48, 48, 43, 43]  # A, F, C, G (midi)
-	var arp := [0, 7, 12, 15, 12, 7, 3, 7]
+	var roots: Array = track["roots"]
+	var arp: Array = track["arp"]
+	var lead_wave: String = track["lead"]
 	var phase_a := 0.0
 	var phase_b := 0.0
 	var phase_k := 0.0
@@ -127,7 +193,7 @@ func _make_music() -> AudioStreamWAV:
 		var bass_hz := 440.0 * pow(2.0, (root - 12 - 69) / 12.0)
 		phase_a += lead_hz / RATE
 		phase_b += bass_hz / RATE
-		var lead := _osc("square", phase_a) * 0.08 * pow(1.0 - in_step, 2.0)
+		var lead := _osc(lead_wave, phase_a) * 0.08 * pow(1.0 - in_step, 2.0)
 		var bass := _osc("saw", phase_b) * 0.12 * (0.6 + 0.4 * (1.0 - in_step))
 		var kick := 0.0
 		if s % 4 == 0:
