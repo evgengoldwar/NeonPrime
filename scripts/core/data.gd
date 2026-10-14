@@ -140,10 +140,50 @@ func card_text(id: String, up: bool = false) -> String:
 	if up and c.get("text_up", "") != "":
 		var t: String = c.text_up
 		# Короткие пометки вроде «Стоит 0» дополняем основным текстом.
-		if t.begins_with("Стоит") or t.length() < 14:
+		if t.begins_with("Стоит"):
+			return c.text
+		if t.length() < 14:
 			return c.text + "\n(+: " + t + ")"
 		return t
 	return c.get("text", "")
+
+
+const ACTION_NAMES := {
+	"damage": "Урон", "slow": "Замедление", "poison": "Яд", "burn": "Горение", "curse": "Проклятие",
+	"greed": "Жадность", "hold": "Задержка", "dark": "Тьма", "draw": "Взять карт", "monsters_hp": "HP Монстрам",
+	"gold": "Золото", "knockback": "Отбрасывание",
+}
+
+
+## Что меняет улучшение «+»: список строк вида «Стоимость: 1 → 0».
+func upgrade_changes(id: String) -> Array:
+	var a := cdef(id, false)
+	var b := cdef(id, true)
+	var out := []
+	for pair in [["cost", "Стоимость"], ["hp", "Здоровье"], ["atk", "Атака"]]:
+		if a.has(pair[0]) and a.get(pair[0]) != b.get(pair[0]):
+			out.append("%s: %d → %d" % [pair[1], int(a[pair[0]]), int(b[pair[0]])])
+	var simple := true
+	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
+		var la: Array = a.get(key, [])
+		var lb: Array = b.get(key, [])
+		if la.size() != lb.size():
+			simple = false
+			continue
+		for i in la.size():
+			var x: Dictionary = la[i]
+			var y: Dictionary = lb[i]
+			if x.get("a") != y.get("a"):
+				simple = false
+			elif x.get("n") != y.get("n"):
+				out.append("%s: %d → %d" % [ACTION_NAMES.get(x.a, x.a), int(x.get("n", 0)), int(y.get("n", 0))])
+			elif x.get("if_greed") != y.get("if_greed"):
+				out.append("Порог Жадности: %d → %d" % [int(x.if_greed), int(y.if_greed)])
+	if a.get("p") != b.get("p") or not simple or out.is_empty():
+		var t: String = cards.get(id, {}).get("text_up", "")
+		if t != "" and not t.begins_with("Стоит"):
+			out.append(t)
+	return out
 
 
 func hero_def(id: String) -> Dictionary:
