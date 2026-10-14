@@ -405,7 +405,7 @@ func _before_hall(h: Dictionary) -> void:
 	if _has_trait(h, "boss_fearless") and h.phase == 2:
 		h.slow = 0
 	if _has_trait(h, "boss_dismantle"):
-		var n := 2 if h.phase == 2 else 1
+		var n: int = 2 if h.phase == 2 else 1
 		for k in n:
 			var best := -1
 			for i in corridor_len:
@@ -603,7 +603,7 @@ func _enter_card(h: Dictionary, idx: int, c: Dictionary) -> void:
 		return
 	if d.type == "trap":
 		if _has_trait(h, "agile") and not h.trap_skipped:
-			var allowed := not (Game.has_collection("thief") and h.trait == "agile" and hall > 0)
+			var allowed: bool = not (Game.has_collection("thief") and h.trait == "agile" and hall > 0)
 			if allowed:
 				h.trap_skipped = true
 				_msg(h, "Перепрыгнул " + d.name)

@@ -62,7 +62,7 @@ func _layout_nodes() -> void:
 	for n in Game.run.map.nodes:
 		var pos := _node_pos(n)
 		positions[int(n.id)] = pos
-		var is_avail := int(n.id) in avail
+		var is_avail: bool = int(n.id) in avail
 		var visited: bool = n.get("visited", false)
 		var col: Color = NODE_COLORS.get(n.type, Color.GRAY)
 		var sz := 116.0 if n.type == "boss" else 92.0

@@ -273,7 +273,7 @@ func _refresh_cells() -> void:
 		for ch in cp.get_children():
 			ch.queue_free()
 		var closed: bool = i >= b.corridor_len
-		var even := i % 2 == 0
+		var even: bool = i % 2 == 0
 		var base := Color(0, 0, 0, 0.25) if even else Color(0, 0, 0, 0.4)
 		var border := UI.PANEL3
 		if selected >= 0 and selected < b.hand.size() and b.phase == "prep" and not closed:
