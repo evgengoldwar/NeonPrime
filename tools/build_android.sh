@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Builds a signed Android APK without the Android SDK.
 #
-#   tools/build_android.sh <path-to-godot-4.7-binary>
+#   tools/build_android.sh <path-to-godot-4.7-binary> [preset]
+#
+# Presets: "Android" (arm64 + armv7, default) or "Android arm64" (smaller APK
+# for 64-bit phones only).
 #
 # Needs: Godot 4.7 export templates installed (android_release.apk),
 # Java 17+, curl. Output: build/NeonPrime.apk (APK Signature Scheme v2).
@@ -10,7 +13,10 @@
 # APK, so a stub SDK is created; signing is done with apksig from Maven Central.
 set -euo pipefail
 
-GODOT="${1:?usage: tools/build_android.sh <godot-binary>}"
+GODOT="${1:?usage: tools/build_android.sh <godot-binary> [preset]}"
+PRESET="${2:-Android}"
+OUT="NeonPrime.apk"
+[ "$PRESET" = "Android arm64" ] && OUT="NeonPrime-arm64.apk"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${WORK_DIR:-$ROOT/build/.tools}"
 mkdir -p "$WORK/out" "$ROOT/build"
@@ -34,7 +40,7 @@ fi
 
 # 2. Export the unsigned APK.
 "$GODOT" --headless --path "$ROOT" --import >/dev/null 2>&1 || true
-"$GODOT" --headless --path "$ROOT" --export-release "Android" "$ROOT/build/NeonPrime-unsigned.apk"
+"$GODOT" --headless --path "$ROOT" --export-release "$PRESET" "$ROOT/build/NeonPrime-unsigned.apk"
 
 # 3. Sign it with apksig (v2).
 JAR="$WORK/apksig.jar"
@@ -50,6 +56,6 @@ java --add-exports java.base/sun.security.x509=ALL-UNNAMED \
 	--add-exports java.base/sun.security.pkcs=ALL-UNNAMED \
 	--add-exports java.base/sun.security.util=ALL-UNNAMED \
 	-cp "$JAR:$WORK/out" ApkSign "$ROOT/tools/neonprime-debug.p12" neonprime neonprime \
-	"$ROOT/build/NeonPrime-unsigned.apk" "$ROOT/build/NeonPrime.apk"
+	"$ROOT/build/NeonPrime-unsigned.apk" "$ROOT/build/$OUT"
 rm -f "$ROOT/build/NeonPrime-unsigned.apk"
-echo "Done: build/NeonPrime.apk"
+echo "Done: build/$OUT"

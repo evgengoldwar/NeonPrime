@@ -108,6 +108,9 @@ tests/                     автотест (бот) и генератор ск�
    tools/build_android.sh /путь/к/Godot_v4.7-stable_linux.x86_64
    ```
 
+   Вторым аргументом можно указать `"Android arm64"` — APK только для 64-битных
+   телефонов, почти вдвое меньше (`build/NeonPrime-arm64.apk`).
+
    Нужны установленные шаблоны экспорта Godot 4.7 и Java 17+. Результат —
    `build/NeonPrime.apk` (Android 7.0+, arm64 и armv7), подписанный отладочным
    ключом `tools/neonprime-debug.p12` (пароль `neonprime`). Этим же ключом
