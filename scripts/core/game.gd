@@ -194,7 +194,7 @@ func new_run(master_id: String, notoriety: int, opts: Dictionary = {}) -> void:
 		treasury -= 5
 	run.treasury = treasury
 	# Стартовая колода забега: боевая колода игрока + 2 копии фирменной карты Хозяина.
-	var start_ids: Array = Progress.deck().duplicate()
+	var start_ids: Array = Progress.deck(master_id).duplicate()
 	if opts.get("daily", false):
 		start_ids = m.deck.duplicate()
 	else:
@@ -285,9 +285,10 @@ func add_card(id: String, up: bool = false) -> void:
 	run.deck.append({"uid": next_uid(), "id": id, "up": up or mastery_up(id, lvl), "lvl": lvl})
 
 
-## Мастерство: с 5-го уровня карта приходит в забег сразу улучшенной «+».
+## Мастерство: утилитарная карта (её числа не растут) с 5-го уровня приходит в забег
+## сразу улучшенной «+». Остальные карты растут числами каждый уровень.
 func mastery_up(id: String, lvl: int) -> bool:
-	return lvl >= int(Data.prog.get("mastery_level", 5)) and Data.cards.get(id, {}).has("up")
+	return lvl >= int(Data.prog.get("mastery_level", 5)) and Data.cards.get(id, {}).has("up") and Data.is_utility(id)
 
 
 ## Уровень карты в забеге: уровень коллекции (не ниже 1) + 1 для карт темы Хозяина.

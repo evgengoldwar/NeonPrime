@@ -26,23 +26,22 @@ func now() -> int:
 func ensure() -> void:
 	var m: Dictionary = Game.meta
 	var defaults := {
-		"gold": 0, "gems": 0, "xp": 0, "plevel": 1, "collection": {}, "deck": [],
+		"gold": 0, "gems": 0, "xp": 0, "plevel": 1, "collection": {}, "deck": [], "decks": {},
 		"chests": [], "free_chest_at": 0, "shop": {}, "master_pick": "dark_lord", "notoriety_pick": 0,
 	}
 	for k in defaults.keys():
 		if not m.has(k):
 			m[k] = defaults[k]
 	if m.collection.is_empty():
-		for id in P().starter_cards:
-			m.collection[id] = {"lvl": 1, "copies": 0}
 		# Первый сундук — сразу готов, чтобы новичок увидел, как всё работает.
 		m.chests = [{"type": "wood", "unlock_at": 1}]
-	var size := int(P().deck_size)
-	if m.deck.size() != size:
-		m.deck = []
-		for id in P().starter_cards:
-			if m.deck.size() < size and owned(id):
-				m.deck.append(id)
+	# Все обычные базовые карты есть с самого начала: из них собирают первую колоду.
+	for id in P().get("starter_collection", P().starter_cards):
+		if not m.collection.has(id):
+			m.collection[id] = {"lvl": 1, "copies": 0}
+	# Старое сохранение с одной колодой: она становится колодой выбранного Хозяина.
+	if m.decks.is_empty() and m.deck.size() == int(P().deck_size):
+		m.decks[str(m.master_pick)] = m.deck.duplicate()
 	while m.chests.size() < int(P().slots):
 		m.chests.append(null)
 	for w in m.get("wings", []):
@@ -141,42 +140,83 @@ func add_copies(id: String, n: int) -> bool:
 	return false
 
 
-## Крыло Замка открыто: фирменная карта Хозяина сразу попадает в коллекцию.
+## Крыло Замка открыто: фирменная карта и карты темы из стартовой колоды Хозяина
+## сразу попадают в коллекцию — новым Хозяином можно играть в его стиле с первого забега.
 func on_wing(wing_id: String, notify: bool = true) -> void:
 	for m in Data.master_list:
-		if m.unlock == wing_id:
-			var sig: String = P().signature.get(m.id, "")
-			if sig != "" and not owned(sig):
-				add_copies(sig, 1)
-				if notify and Game.main:
-					Game.main.toast("Новая карта: " + Data.card_name(sig))
+		if m.unlock != wing_id:
+			continue
+		var ids := [P().signature.get(m.id, "")]
+		for id in m.deck:
+			if Data.cards[id].set == wing_id and not id in ids:
+				ids.append(id)
+		var got := []
+		for id in ids:
+			if id != "" and not owned(id):
+				add_copies(id, 1)
+				got.append(Data.card_name(id))
+		if notify and Game.main and not got.is_empty():
+			Game.main.toast("Новые карты: " + ", ".join(got))
+
+
+## Есть ли среди выпадающих карт карты этой редкости.
+func has_rarity(rarity: String) -> bool:
+	for id in droppable_ids():
+		if Data.cards[id].rarity == rarity:
+			return true
+	return false
 
 
 # ================================================================ колода
 
-func deck() -> Array:
-	return Game.meta.deck
+## У каждого Хозяина своя боевая колода: Некроманту — нежить, Алхимику — яды.
+func deck(master_id: String = "") -> Array:
+	if master_id == "":
+		master_id = str(Game.meta.master_pick)
+	var decks: Dictionary = Game.meta.decks
+	if not decks.has(master_id) or decks[master_id].size() != int(P().deck_size):
+		decks[master_id] = default_deck(master_id)
+	return decks[master_id]
+
+
+## Колода по умолчанию: найденные карты из стартовой колоды Хозяина, остальное — стартовые.
+func default_deck(master_id: String) -> Array:
+	var size := int(P().deck_size)
+	var out := []
+	var sig: String = P().signature.get(master_id, "")
+	var src: Array = Data.masters.get(master_id, {}).get("deck", []).duplicate()
+	src.append_array(P().starter_cards)
+	src.append_array(P().get("starter_collection", []))
+	for id in src:
+		if out.size() < size and owned(id) and id != sig and not id in out:
+			out.append(id)
+	for id in Game.meta.collection.keys():
+		if out.size() < size and not id in out and id != sig:
+			out.append(id)
+	return out
 
 
 func in_deck(id: String) -> bool:
-	return id in Game.meta.deck
+	return id in deck()
 
 
 func set_deck_slot(i: int, id: String) -> void:
-	if not owned(id) or i < 0 or i >= Game.meta.deck.size():
+	var d := deck()
+	if not owned(id) or i < 0 or i >= d.size():
 		return
-	var j: int = Game.meta.deck.find(id)
+	var j: int = d.find(id)
 	if j >= 0:
-		Game.meta.deck[j] = Game.meta.deck[i]
-	Game.meta.deck[i] = id
+		d[j] = d[i]
+	d[i] = id
 	save()
 
 
 func avg_cost() -> float:
+	var d := deck()
 	var total := 0
-	for id in Game.meta.deck:
+	for id in d:
 		total += int(Data.cards[id].cost)
-	return float(total) / maxi(1, Game.meta.deck.size())
+	return float(total) / maxi(1, d.size())
 
 
 # ================================================================ уровень игрока
@@ -218,12 +258,21 @@ func gen_chest(type: String) -> Dictionary:
 	var total := int(d.cards)
 	var stacks := []
 	var used := []
-	for rar in ["legendary", "epic", "rare"]:
+	var order := ["legendary", "epic", "rare", "common"]
+	for r in 3:
+		var rar: String = order[r]
 		var spec: Array = d.get(rar, [0, 0])
 		if float(spec[0]) > 0 and rng.randf() < float(spec[0]):
-			var id := _pick_card(rar, used)
+			# Нет карт этой редкости (крылья закрыты) — даём редкостью ниже, но больше копий.
+			var n := int(spec[1])
+			var k := r
+			var id := _pick_card(order[k], used)
+			while id == "" and k < 3:
+				k += 1
+				n *= 3
+				id = _pick_card(order[k], used)
 			if id != "":
-				var n := int(spec[1])
+				n = mini(n, total)
 				stacks.append({"id": id, "n": n})
 				used.append(id)
 				total -= n
@@ -410,17 +459,14 @@ func run_chest(won: bool, floor_reached: int, notoriety: int, chosen_killed: boo
 		return "legendary"
 	if won:
 		return "magic" if notoriety >= 3 else "gold"
-	match floor_reached:
-		1:
-			return "wood"
-		2:
-			return "silver"
-	return "gold"
+	return "wood" if floor_reached <= 1 else "silver"
 
 
 ## Начисляет золото (остаток Казны), кристаллы и сундук. Возвращает сводку.
 func run_rewards(won: bool, run_state: Dictionary) -> Dictionary:
-	var gold := maxi(0, int(run_state.get("treasury", 0))) if won else 0
+	# Победа: всё, что осталось в Казне. Поражение: немного за каждого убитого героя.
+	var gold := maxi(0, int(run_state.get("treasury", 0))) if won \
+		else int(run_state.get("kills_count", 0)) * int(P().get("loss_gold_per_kill", 0))
 	var gems := int(run_state.get("bosses", 0)) * int(P().gems.boss)
 	if won:
 		gems += int(P().gems.win)

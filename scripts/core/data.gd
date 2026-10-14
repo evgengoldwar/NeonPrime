@@ -260,6 +260,11 @@ func upgrade_changes(id: String, lvl: int = 1) -> Array:
 	return out
 
 
+## Утилитарная карта: её числа не растут с уровнем (Замедление, Страх, добор…).
+func is_utility(id: String) -> bool:
+	return level_changes(id, 1, int(prog.get("max_level", 8))).is_empty()
+
+
 ## Что даёт следующий уровень коллекции: «Урон: 3 → 4».
 func level_changes(id: String, from_lvl: int, to_lvl: int) -> Array:
 	return def_changes(cdef(id, false, from_lvl), cdef(id, false, to_lvl))

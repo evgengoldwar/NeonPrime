@@ -468,7 +468,9 @@ static func chest_info(type: String) -> String:
 	for pair in [["rare", "Редкие"], ["epic", "Эпическая"], ["legendary", "Легендарная"]]:
 		var spec: Array = d.get(pair[0], [0, 0])
 		var ch := float(spec[0])
-		if ch >= 1.0:
+		if ch > 0.0 and not Progress.has_rarity(pair[0]):
+			lines.append("%s: пока нет — откройте крылья Замка (выпадет карта попроще)" % pair[1])
+		elif ch >= 1.0:
 			lines.append("%s: %d гарантированно" % [pair[1], int(spec[1])])
 		elif ch > 0.0:
 			lines.append("%s: шанс %d%%" % [pair[1], int(round(ch * 100))])
@@ -489,7 +491,7 @@ func _upgradable_count() -> int:
 func _deck() -> void:
 	var body := _page()
 	var head := UI.hbox()
-	var t := _section("Боевая колода")
+	var t := _section("Колода: " + Data.master_list[_master_idx].name)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(UI.label("Средняя Тьма: %.1f" % Progress.avg_cost(), 20, UI.DARK, HORIZONTAL_ALIGNMENT_RIGHT, false))
@@ -670,7 +672,7 @@ func card_detail(id: String) -> void:
 		p.box.add_child(UI.label("Карта ещё не найдена. Выбей её из сундука.", 20, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 		return
 	var mastery := int(Data.prog.get("mastery_level", 5))
-	if c.has("up"):
+	if c.has("up") and Data.is_utility(id):
 		var mt := "Мастерство (ур. %d): в забеге сразу «+» — %s" % [mastery, ", ".join(Data.upgrade_changes(id, lvl))]
 		p.box.add_child(UI.label(mt, 18, UI.GOLD if lvl >= mastery else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	var n := Progress.need(id)
@@ -683,7 +685,7 @@ func card_detail(id: String) -> void:
 		cv.add_child(UI.label("Уровень %d:" % (lvl + 1), 18, UI.DIM))
 		for line in changes:
 			cv.add_child(UI.label(line, 24, UI.GREEN))
-		if lvl + 1 == mastery:
+		if lvl + 1 == mastery and c.has("up") and Data.is_utility(id):
 			cv.add_child(UI.label("Мастерство: в забеге карта сразу «+»", 24, UI.GOLD))
 		elif changes.is_empty():
 			cv.add_child(UI.label("Числа этой карты не растут — копите до %d уровня ради «+»." % mastery, 20, UI.TEXT))

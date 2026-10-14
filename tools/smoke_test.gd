@@ -3,15 +3,19 @@ extends Node
 ## Запуск: godot --headless --path . res://tools/smoke_test.tscn
 ## Ошибки скриптов Godot печатает в stderr; в конце — сводка.
 
-const SCREENS := ["loading", "menu", "master_select", "castle", "trophies", "daily", "settings", "chest_open"]
+const SCREENS := ["loading", "menu", "castle", "trophies", "daily", "settings", "chest_open"]
 
 var main
 var steps := 0
 var battles := 0
 var runs_done := 0
+var auto := true            # false — только бот, без самого теста
+var floor_cb := Callable()   # вызывается на каждом шаге (для balance_sim)
 
 
 func _ready() -> void:
+	if not auto:
+		return
 	main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(main)
 	await _frames(3)
@@ -35,7 +39,7 @@ func _ready() -> void:
 	for u in Data.upgrades:
 		Game.meta.upgrades[u.id] = u.costs.size()
 	Game.meta.notoriety_max = 10
-	for s in ["castle", "trophies", "master_select"]:
+	for s in ["castle", "trophies"]:
 		main.goto(s)
 		await _frames(2)
 	var notoriety := [0, 5, 10, 2, 7, 0]
@@ -72,6 +76,8 @@ func _screen() -> String:
 func _drive(limit: int) -> void:
 	for i in limit:
 		steps += 1
+		if floor_cb.is_valid() and Game.has_run():
+			floor_cb.call()
 		var s := _screen()
 		var scr = main.screen
 		match s:
