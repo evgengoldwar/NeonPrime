@@ -381,7 +381,7 @@ func _cell_card(c: Dictionary, idx: int) -> Control:
 	elif "permanent" in d.kw:
 		tag = "ПОСТОЯННАЯ"
 	v.add_child(UI.label(name_text, 24, UI.GREEN if up else UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, false))
-	var txt := UI.label(tag if tag != "" else Data.card_text(c.id, up).split("\n")[0], 16, UI.GOLD if tag != "" else UI.DIM)
+	var txt := UI.label(tag if tag != "" else Data.card_text(c.id, up, b.card_lvl(c)).split("\n")[0], 16, UI.GOLD if tag != "" else UI.DIM)
 	txt.clip_text = true
 	txt.autowrap_mode = TextServer.AUTOWRAP_OFF
 	txt.custom_minimum_size = Vector2(160, 0)
@@ -454,7 +454,7 @@ func _update_hint() -> void:
 		hint.add_theme_color_override("font_color", UI.GOLD)
 	elif selected >= 0 and selected < b.hand.size():
 		var c = b.hand[selected]
-		text = Data.card_text(c.id, b.card_up(c)).split("\n")[0]
+		text = Data.card_text(c.id, b.card_up(c), b.card_lvl(c)).split("\n")[0]
 		hint.add_theme_color_override("font_color", UI.TEXT)
 	elif b.phase == "prep":
 		text = "Тяни карты на клетки. Удержи — описание"

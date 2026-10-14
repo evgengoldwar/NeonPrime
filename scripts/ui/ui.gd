@@ -429,27 +429,24 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top.add_child(nm)
+	if lvl > 1:
+		var lb := level_badge(lvl, 16)
+		lb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(lb)
 	var art := framed("panel_dark", 4)
 	art.add_child(center(card_icon(id, 6 if w >= 190 else 5)))
 	v.add_child(art)
-	if lvl > 1:
-		var lb := level_badge(lvl, 16)
-		lb.position = Vector2(w - 70, 4)
-		art.add_child(lb)
 	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, Data.RARITY_COLORS.get(d.rarity, DIM)))
-	var txt := label(Data.card_text(id, up), 16, TEXT)
+	var txt := label(Data.card_text(id, up, lvl), 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(txt)
-	var summary: String = Data.level_summary(id, up, lvl)
-	if summary != "" and d.type != "monster":
-		v.add_child(label("Ур.%d: %s" % [lvl, summary], 16, GREEN))
 	if d.type == "monster":
 		var sh := hbox(16)
 		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED))
 		sh.add_child(stat("sword", "Ж" if d.get("special", "") == "mimic" else str(int(d.get("atk", 0))), TEXT))
 		v.add_child(sh)
 	ignore_mouse(p)
-	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up)
+	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up, lvl)
 	return p
 
 

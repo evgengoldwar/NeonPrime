@@ -166,7 +166,67 @@ func card_name(id: String, up: bool = false) -> String:
 	return cards.get(id, {}).get("name", id) + ("+" if up else "")
 
 
-func card_text(id: String, up: bool = false) -> String:
+## Текст карты. С уровнем выше 1 числа в тексте уже усилены: «Яд 4» → «Яд 5».
+func card_text(id: String, up: bool = false, lvl: int = 1) -> String:
+	var t := _base_text(id, up)
+	if lvl <= 1:
+		return t
+	var rest := []
+	for ch in _level_pairs(cdef(id, up, 1), cdef(id, up, lvl)):
+		var swapped := _swap_num(t, int(ch[1]), int(ch[2]), NUM_WORDS.get(ch[0], []))
+		if swapped == "" and not ch[0] in ["hp", "atk"]:   # HP и Атака видны на значках монстра
+			rest.append("%s %d" % [ACTION_NAMES.get(ch[0], ch[0]), int(ch[2])])
+		elif swapped != "":
+			t = swapped
+	if not rest.is_empty():
+		t += "\n(Ур.%d: %s)" % [lvl, ", ".join(rest)]
+	return t
+
+
+## Слова, рядом с которыми в тексте карты стоит число этого параметра.
+const NUM_WORDS := {
+	"damage": ["урона", "Засада"], "poison": ["Яд"], "burn": ["Горение"], "curse": ["Проклятие"],
+	"greed": ["Жадность героя", "Жадность"], "gold": ["золота"], "monsters_hp": ["HP"],
+	"hp": ["HP"], "atk": ["Атака"], "dark_altar": ["урона"], "cauldron": ["золота"],
+}
+
+
+## Пары [параметр, было, стало] для чисел, которые поменял уровень.
+func _level_pairs(a: Dictionary, b: Dictionary) -> Array:
+	var out := []
+	for k in ["hp", "atk"]:
+		if a.has(k) and a.get(k) != b.get(k):
+			out.append([k, int(a[k]), int(b[k])])
+	var sp: String = a.get("special", "")
+	if sp in ["dark_altar", "cauldron"] and a.get("p") != b.get("p"):
+		out.append([sp, int(a.p), int(b.p)])
+	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
+		var la: Array = a.get(key, [])
+		var lb: Array = b.get(key, [])
+		for i in mini(la.size(), lb.size()):
+			if la[i].get("a") == lb[i].get("a") and la[i].get("n") != lb[i].get("n"):
+				out.append([la[i].a, int(la[i].get("n", 0)), int(lb[i].get("n", 0))])
+	return out
+
+
+## Заменяет первое число old рядом с одним из слов на new. "" — не нашлось.
+func _swap_num(text: String, old: int, new: int, words: Array) -> String:
+	var o := str(old)
+	for w in words:
+		for pat in [w + " " + o, w + " +" + o, o + " " + w, "+" + o + " " + w]:
+			var pt: String = pat
+			var i := text.find(pt)
+			while i >= 0:
+				var before_ok := i == 0 or not text[i - 1].is_valid_int() or not pt[0].is_valid_int()
+				var end := i + pt.length()
+				var after_ok := end >= text.length() or not text[end].is_valid_int() or not pt[pt.length() - 1].is_valid_int()
+				if before_ok and after_ok:
+					return text.substr(0, i) + pt.replace(o, str(new)) + text.substr(end)
+				i = text.find(pt, i + 1)
+	return ""
+
+
+func _base_text(id: String, up: bool) -> String:
 	var c: Dictionary = cards.get(id, {})
 	if up and c.get("text_up", "") != "":
 		var t: String = c.text_up
@@ -203,17 +263,6 @@ func upgrade_changes(id: String, lvl: int = 1) -> Array:
 ## Что даёт следующий уровень коллекции: «Урон: 3 → 4».
 func level_changes(id: String, from_lvl: int, to_lvl: int) -> Array:
 	return def_changes(cdef(id, false, from_lvl), cdef(id, false, to_lvl))
-
-
-## Короткая сводка силы карты на уровне: «Урон 4 · HP 8».
-func level_summary(id: String, up: bool, lvl: int) -> String:
-	if lvl <= 1:
-		return ""
-	var parts := []
-	for line in def_changes(cdef(id, up, 1), cdef(id, up, lvl)):
-		var s: String = line
-		parts.append(s.split(":")[0] + " " + s.split("→ ")[-1])
-	return " · ".join(parts)
 
 
 func _same_shape(a: Dictionary, b: Dictionary) -> bool:
