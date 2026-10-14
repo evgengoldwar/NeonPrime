@@ -1,3 +1,8 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Сборка APK
+/build/
+/.build-cache/
+/keystore/

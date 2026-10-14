@@ -49,6 +49,8 @@ func _ready() -> void:
 	v.add_child(buttons)
 	# Карта читается снизу вверх: прокручиваем к текущему ряду.
 	await get_tree().process_frame
+	if not is_inside_tree() or Game.run.is_empty():
+		return
 	var cur := int(Game.run.current)
 	var row := 0 if cur < 0 else int(Game.map_node(cur).row)
 	sc.scroll_vertical = int(maxf(0.0, canvas.custom_minimum_size.y - ROW_H * (row + 4)))

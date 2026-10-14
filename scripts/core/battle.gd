@@ -6,6 +6,7 @@ extends RefCounted
 
 const HALLS := 3
 const MAX_HAND := 7
+const MAX_HALL_TICKS := 400
 const SAVE_PROPS := [
 	"heroes", "cells", "corridor_len", "hand", "draw_pile", "discard", "exhausted",
 	"dark", "hall", "phase", "tick_no", "discount", "next_discount", "combo", "best_combo",
@@ -525,8 +526,8 @@ func _hero_tick(h: Dictionary) -> void:
 		_fight(h, h.pos)
 		_check_death(h)
 		return
-	# 4. Задержка
-	if h.tick_on < 1 + h.slow + h.hold:
+	# 4. Задержка. Страховка: если зал затянулся, Замедление больше не держит героя.
+	if h.tick_on < 1 + h.slow + h.hold and tick_no < MAX_HALL_TICKS:
 		h.tick_on += 1
 		return
 	# 5. Шаг
@@ -597,7 +598,10 @@ func _enter_card(h: Dictionary, idx: int, c: Dictionary) -> void:
 		_remove_card(idx, false)
 		return
 	if d.type == "monster":
-		if c.hp > 0 and d.has("ambush"):
+		# Засада бьёт каждого героя 1 раз за зал, иначе Страх из Засады зацикливает героя.
+		var key := "ambush_" + str(h.uid)
+		if c.hp > 0 and d.has("ambush") and not c.once_actions.has(key):
+			c.once_actions[key] = true
 			_trigger_fx(idx)
 			_run_actions(d.ambush, h, idx, c)
 		return
@@ -721,6 +725,8 @@ func _action(a: Dictionary, h: Dictionary, idx: int, c) -> void:
 			h.hold += int(a.n)
 			_status(h, "Задержан на %d" % int(a.n))
 		"knockback":
+			if tick_no >= MAX_HALL_TICKS:
+				return
 			for k in int(a.n):
 				if h.pos <= 0 or h.state != "walk":
 					break
@@ -738,6 +744,9 @@ func _action(a: Dictionary, h: Dictionary, idx: int, c) -> void:
 					_trigger_fx(p)
 					_run_actions(pd.enter, h, p, pc)
 					_depth -= 1
+					# Призрак, повторивший карту «Однократно», тоже срабатывает 1 раз за зал.
+					if "once" in pd.kw and c != null:
+						c.once_used = true
 		"gold":
 			_gold(int(a.n), "")
 
@@ -770,7 +779,7 @@ func _apply_slow(h: Dictionary, n: int, from_card: bool) -> void:
 
 
 func _apply_fear(h: Dictionary) -> void:
-	if h.state != "walk":
+	if h.state != "walk" or tick_no >= MAX_HALL_TICKS:
 		return
 	if _has_trait(h, "light") or _has_trait(h, "boss_fearless") or _has_trait(h, "boss_king") or "fearless" in h.mods:
 		_status(h, "Не боится")
