@@ -1,3 +1,0 @@
-Tiny5 — Copyright 2024 The tiny5 Project Authors (https://github.com/Gissio/font_tiny5)
-Шрифт распространяется по лицензии SIL Open Font License 1.1: https://openfontlicense.org
-Получен из Google Fonts.

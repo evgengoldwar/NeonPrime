@@ -10,13 +10,14 @@ const ACCENT := Color("#c159c9")
 const GOLD := Color("#feae34")
 const SOUL := Color("#2ce8f5")
 const TEXT := Color("#f4f0ff")
-const DIM := Color("#8b7fa3")
+const DIM := Color("#b9aed2")
 const RED := Color("#e43b44")
 const GREEN := Color("#63c74d")
 const DARK := Color("#9d6bff")
 const INK := Color("#18141e")
 
-const FONT_PATH := "res://assets/fonts/Tiny5-Regular.ttf"
+const FONT_PATH := "res://assets/fonts/Handjet-Regular.ttf"
+const PIXEL_FONT_PATH := "res://assets/fonts/Tiny5-Regular.ttf"
 const SPR := "res://assets/sprites/"
 const FRAME_MARGIN := 6
 
@@ -31,8 +32,18 @@ static func tex(path: String) -> Texture2D:
 	return null
 
 
+## Основной шрифт для текста: Handjet — высокие чёткие буквы, хорошо читается.
 static func font() -> Font:
 	var f = load(FONT_PATH)
+	if f is FontFile:
+		f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+		f.hinting = TextServer.HINTING_LIGHT
+	return f
+
+
+## Пиксельный шрифт для крупных заголовков: Tiny5 на сетке 8 px.
+static func pixel_font() -> Font:
+	var f = load(PIXEL_FONT_PATH)
 	if f is FontFile:
 		f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
 		f.hinting = TextServer.HINTING_NONE
@@ -40,9 +51,14 @@ static func font() -> Font:
 	return f
 
 
-## Tiny5 нарисован на сетке 8 px: только кратные 8 размеры остаются чёткими.
+## Размер текста: не меньше 24, чтобы мелкие подписи не сливались.
 static func fs(size: int) -> int:
-	return maxi(16, int(round(size / 8.0)) * 8)
+	return maxi(24, size + 4)
+
+
+## Размер пиксельного заголовка: кратен 8, чтобы Tiny5 оставался чётким.
+static func pfs(size: int) -> int:
+	return maxi(24, int(round(size / 8.0)) * 8)
 
 
 # ---------------------------------------------------------------- стили
@@ -82,7 +98,7 @@ static func frame(name: String, pad: int = 12) -> StyleBox:
 static func make_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font = font()
-	t.default_font_size = 24
+	t.default_font_size = 28
 	t.set_color("font_color", "Label", TEXT)
 	for cls in ["Button", "CheckButton", "OptionButton"]:
 		t.set_color("font_color", cls, TEXT)
@@ -91,7 +107,7 @@ static func make_theme() -> Theme:
 		t.set_color("font_focus_color", cls, TEXT)
 		t.set_color("font_disabled_color", cls, Color("#5e5470"))
 		t.set_color("font_outline_color", cls, INK)
-		t.set_constant("outline_size", cls, 4)
+		t.set_constant("outline_size", cls, 6)
 	t.set_stylebox("normal", "Button", frame("btn"))
 	t.set_stylebox("hover", "Button", frame("btn_hover"))
 	t.set_stylebox("pressed", "Button", frame("btn_pressed"))
@@ -132,9 +148,9 @@ static func label(text: String, size: int = 24, color: Color = TEXT, align: int 
 	l.text = text
 	l.add_theme_font_size_override("font_size", fs(size))
 	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
-	l.add_theme_constant_override("shadow_offset_x", 0)
-	l.add_theme_constant_override("shadow_offset_y", 2)
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_constant_override("line_spacing", 2)
 	l.horizontal_alignment = align
 	if wrap:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -144,6 +160,8 @@ static func label(text: String, size: int = 24, color: Color = TEXT, align: int 
 
 static func title(text: String, size: int = 40) -> Label:
 	var l := label(text, size, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	l.add_theme_font_override("font", pixel_font())
+	l.add_theme_font_size_override("font_size", pfs(size))
 	l.add_theme_color_override("font_outline_color", INK)
 	l.add_theme_constant_override("outline_size", 8)
 	l.add_theme_color_override("font_shadow_color", Color("#5e3810"))
@@ -432,7 +450,7 @@ static func mini_card(c: Dictionary, w: int, h: int, cost_override: int = -1) ->
 	p.add_child(v)
 	var cost := cost_override if cost_override >= 0 else int(d.cost)
 	v.add_child(cost_badge(cost))
-	var ic := card_icon(c.id, 5 if w >= 90 else 4)
+	var ic := card_icon(c.id, 4)
 	ic.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(ic)
 	var nm := label(Data.card_name(c.id, up), 16, GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_CENTER)
