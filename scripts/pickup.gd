@@ -1,13 +1,11 @@
 class_name Pickup
 extends Node3D
-## Floating bonus inside one of the 27 cells.
+## Floating bonus in one of the 9 lanes; it rides towards the player with the track.
 
 enum Kind { FREEZE, ARMOR, MULTIPLIER }
 
-const LIFETIME := 7.0
-
 var kind := Kind.FREEZE
-var cell := Vector3i.ZERO
+var cell := Vector2i.ZERO
 var finished := false
 var _t := 0.0
 var _body: Node3D
@@ -22,7 +20,7 @@ static func color_of(k: Kind) -> Color:
 	return Neon.GOLD
 
 
-func build(k: Kind, c: Vector3i, world_pos: Vector3) -> void:
+func build(k: Kind, c: Vector2i, world_pos: Vector3) -> void:
 	kind = k
 	cell = c
 	position = world_pos
@@ -102,7 +100,3 @@ func _process(delta: float) -> void:
 	_body.position.y = sin(_t * 3.0) * 0.06
 	var s := minf(1.0, _t * 5.0)
 	scale = Vector3.ONE * s
-	if _t > LIFETIME - 2.0:
-		visible = fmod(_t * 8.0, 1.0) < 0.6
-	if _t > LIFETIME:
-		finished = true

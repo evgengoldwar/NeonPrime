@@ -43,6 +43,6 @@ func _process(_d: float) -> void:
 		1301: get_tree().quit()
 	if frames > 110 and frames < 1300 and node.state == node.State.PLAYING:
 		node.has_armor = true
-		if frames % 40 == 0:
-			var dirs := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+		if frames % 25 == 0:
+			var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 			node.try_move(dirs[randi() % dirs.size()])

@@ -6,6 +6,8 @@ uniform float grid_size = 1.2;
 uniform float scroll_speed = 0.8;
 uniform float energy = 2.2;
 uniform float fade_distance = 26.0;
+/// Extra scroll in world units (used by the runner to follow the speed).
+uniform float offset = 0.0;
 
 varying vec3 world_pos;
 
@@ -15,7 +17,7 @@ void vertex() {
 
 void fragment() {
 	vec2 uv = world_pos.xz / grid_size;
-	uv.y -= TIME * scroll_speed;
+	uv.y -= TIME * scroll_speed + offset / grid_size;
 	vec2 g = abs(fract(uv - 0.5) - 0.5) / (fwidth(uv) * 1.4);
 	float line = 1.0 - min(min(g.x, g.y), 1.0);
 	float fade = clamp(1.0 - length(world_pos.xz) / fade_distance, 0.0, 1.0);

@@ -1,32 +1,43 @@
 extends Node3D
-## Gameplay: a 3x3x3 invisible grid, a neon cube player and incoming hazards.
+## Endless neon runner.
 ##
-## Controls: swipe left/right/up/down moves along X/Y, the two bottom buttons
-## move in depth. On desktop: WASD / arrows + Q/E, Esc pauses.
+## The player cube lives in a 3x3 field (one plane: left/right, up/down) and
+## rushes forward down an endless track. Gates (lasers, walls with holes, blocks)
+## are generated randomly ahead and come towards the player; they can stand
+## still, spin or swing. Swipes move the cube one cell. Desktop: WASD / arrows,
+## Esc pauses.
 
 enum State { COUNTDOWN, PLAYING, DEAD }
 
 const CELL := 1.2
 const HALF := 1.8
-const PLAYER_R := 0.36
-const MOVE_TIME := 0.085
-const MAX_OBSTACLES := 6
+const PLAYER_R := 0.34
+const MOVE_TIME := 0.08
+const SPAWN_Z := -80.0
+const DESPAWN_Z := 6.0
+## Gates disappear right behind the player so they never block the view.
+const GATE_DESPAWN_Z := 1.5
+const FRAME_SPACING := 6.0
+const FRAME_COUNT := 15
 
 var state := State.COUNTDOWN
-var grid_pos := Vector3i(1, 1, 1)
+var grid_pos := Vector2i.ZERO  ## -1..1 on each axis
 var rng := RandomNumberGenerator.new()
 
 var time_alive := 0.0
+var distance := 0.0
+var speed := 9.0
 var score := 0.0
 var countdown := 3.0
-var spawn_timer := 1.0
-var pickup_timer := 5.0
+var gap_left := 30.0  ## distance until the next gate is generated
+var pickup_timer := 4.0
 var freeze_time := 0.0
 var mult_time := 0.0
 var mult_factor := 1
 var has_armor := false
 var invuln_time := 0.0
 var shake := 0.0
+var gates_passed := 0
 
 var obstacles: Array[Obstacle] = []
 var pickups: Array[Pickup] = []
@@ -37,8 +48,11 @@ var cam: Camera3D
 var player: Node3D
 var player_body: Node3D
 var armor_shell: Node3D
-var shadows: Array[MeshInstance3D] = []
-var obstacles_root: Node3D
+var shadow: MeshInstance3D
+var track_root: Node3D
+var frames: Array[Node3D] = []
+var streaks: Array[MeshInstance3D] = []
+var floor_mat: ShaderMaterial
 var fx_root: Node3D
 var deco_ring: Node3D
 var _move_tween: Tween
@@ -47,6 +61,7 @@ var _move_tween: Tween
 var hud: CanvasLayer
 var score_label: Label
 var best_label: Label
+var distance_label: Label
 var effects_box: HBoxContainer
 var freeze_chip: Label
 var armor_chip: Label
@@ -57,11 +72,9 @@ var popup_anchor: Control
 var frost: ColorRect
 var flash: ColorRect
 var fps_label: Label
-var depth_pips: Array[Panel] = []
 var pause_overlay: Control
 var _last_count := 4
 
-# Touch tracking: index -> start position
 var _touches := {}
 
 
@@ -70,7 +83,6 @@ func _ready() -> void:
 	_build_world()
 	_build_player()
 	_build_hud()
-	_place_player_instant()
 	get_viewport().size_changed.connect(_fit_camera)
 	_fit_camera()
 
@@ -81,83 +93,102 @@ func _ready() -> void:
 
 func _build_world() -> void:
 	env = Neon.make_environment(bool(GameData.settings["glow"]))
+	env.fog_density = 0.022
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, 30, 0)
+	sun.rotation_degrees = Vector3(-40, 20, 0)
 	sun.light_energy = 0.5
 	sun.light_color = Color(0.7, 0.6, 1.0)
 	add_child(sun)
 
 	cam = Camera3D.new()
-	cam.position = Vector3(2.0, 2.4, 5.7)
+	cam.position = Vector3(0, 1.1, 6.2)
 	add_child(cam)
-	cam.look_at(Vector3(0, -0.2, 0))
+	cam.look_at(Vector3(0, 0.55, -6.0))
 
-	add_child(Neon.make_floor(-3.4, Neon.MAGENTA))
+	var floor_mesh := Neon.make_floor(-3.4, Neon.MAGENTA)
+	floor_mat = floor_mesh.material_override
+	floor_mat.set_shader_parameter("scroll_speed", 0.0)
+	floor_mat.set_shader_parameter("fade_distance", 70.0)
+	add_child(floor_mesh)
 
-	# Decorative rings straight behind the arena from the camera's point of view.
+	# Decorative rings at the end of the track.
 	deco_ring = Node3D.new()
+	deco_ring.position = Vector3(0, 3.0, -95)
 	add_child(deco_ring)
-	var view_dir := -cam.global_transform.basis.z
-	deco_ring.position = cam.position + view_dir * 34.0 + Vector3(0, 4.0, 0)
-	deco_ring.look_at(cam.position)
 	for i in 3:
 		var ring := MeshInstance3D.new()
 		var tm := TorusMesh.new()
-		tm.inner_radius = 7.0 + i * 2.2
-		tm.outer_radius = 7.15 + i * 2.2
+		tm.inner_radius = 14.0 + i * 4.0
+		tm.outer_radius = 14.4 + i * 4.0
 		tm.rings = 64
 		ring.mesh = tm
 		ring.rotation = Vector3(PI / 2.0, 0, 0)
-		ring.material_override = Neon.glow([Neon.MAGENTA, Neon.PURPLE, Neon.CYAN][i], 2.5 - i * 0.6)
+		ring.material_override = Neon.glow([Neon.MAGENTA, Neon.PURPLE, Neon.CYAN][i], 3.0 - i * 0.7)
 		deco_ring.add_child(ring)
 
-	# Arena frame and faint guides on the far faces.
-	var frame := Neon.wire_box(Vector3.ONE * HALF, 0.04, Neon.glow(Neon.PURPLE, 3.0))
-	add_child(frame)
-	var guide_mat := Neon.ghost(Neon.PURPLE, 0.22, 1.2, true)
+	# Track: four rails along the corners of the 3x3 field and scrolling frames.
+	var rail_mat := Neon.glow(Neon.PURPLE, 3.0)
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			add_child(Neon.bar(Vector3(sx * HALF, sy * HALF, SPAWN_Z - 10.0),
+					Vector3(sx * HALF, sy * HALF, 12.0), 0.04, rail_mat))
+	var floor_guides := Neon.ghost(Neon.PURPLE, 0.25, 1.2, true)
 	for k in [-0.5, 0.5]:
 		var o: float = k * CELL
-		# bottom face (y = -HALF)
-		add_child(Neon.bar(Vector3(o, -HALF, -HALF), Vector3(o, -HALF, HALF), 0.015, guide_mat))
-		add_child(Neon.bar(Vector3(-HALF, -HALF, o), Vector3(HALF, -HALF, o), 0.015, guide_mat))
-		# back face (z = -HALF)
-		add_child(Neon.bar(Vector3(o, -HALF, -HALF), Vector3(o, HALF, -HALF), 0.015, guide_mat))
-		add_child(Neon.bar(Vector3(-HALF, o, -HALF), Vector3(HALF, o, -HALF), 0.015, guide_mat))
-		# left face (x = -HALF)
-		add_child(Neon.bar(Vector3(-HALF, -HALF, o), Vector3(-HALF, HALF, o), 0.015, guide_mat))
-		add_child(Neon.bar(Vector3(-HALF, o, -HALF), Vector3(-HALF, o, HALF), 0.015, guide_mat))
+		add_child(Neon.bar(Vector3(o, -HALF, SPAWN_Z - 10.0), Vector3(o, -HALF, 12.0), 0.02, floor_guides))
 
-	# Projections of the player on the far faces help reading depth.
-	var shadow_mat := Neon.ghost(Neon.CYAN, 0.35, 1.6, true)
-	var rotations: Array[Vector3] = [Vector3(-PI / 2.0, 0, 0), Vector3.ZERO, Vector3(0, PI / 2.0, 0)]
-	for r in rotations:
-		var q := MeshInstance3D.new()
-		var qm := QuadMesh.new()
-		qm.size = Vector2(0.72, 0.72)
-		q.mesh = qm
-		q.rotation = r
-		q.material_override = shadow_mat
-		add_child(q)
-		shadows.append(q)
+	track_root = Node3D.new()
+	add_child(track_root)
+	var frame_mats := [Neon.ghost(Neon.PURPLE, 0.55, 2.0, true), Neon.ghost(Neon.MAGENTA, 0.45, 2.0, true)]
+	for i in FRAME_COUNT:
+		var f := Neon.wire_box(Vector3(HALF, HALF, 0.0), 0.03, frame_mats[i % 2])
+		f.position.z = -i * FRAME_SPACING
+		track_root.add_child(f)
+		frames.append(f)
 
-	obstacles_root = Node3D.new()
-	add_child(obstacles_root)
+	# Speed streaks around the track.
+	var streak_mat := Neon.ghost(Neon.CYAN, 0.5, 2.5, true)
+	for i in 22:
+		var s := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.03, 0.03, 4.0)
+		s.mesh = bm
+		s.material_override = streak_mat
+		_reset_streak(s, rng.randf_range(SPAWN_Z, DESPAWN_Z))
+		track_root.add_child(s)
+		streaks.append(s)
+
+	# Projection of the player on the track floor helps reading position.
+	shadow = MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(0.72, 0.72)
+	shadow.mesh = qm
+	shadow.rotation = Vector3(-PI / 2.0, 0, 0)
+	shadow.material_override = Neon.ghost(Neon.CYAN, 0.35, 1.6, true)
+	add_child(shadow)
+
 	fx_root = Node3D.new()
 	add_child(fx_root)
+
+
+func _reset_streak(s: MeshInstance3D, z: float) -> void:
+	var ang := rng.randf() * TAU
+	var r := rng.randf_range(3.2, 7.0)
+	s.position = Vector3(cos(ang) * r, sin(ang) * r * 0.8 + 0.5, z)
 
 
 func _fit_camera() -> void:
 	var s := get_viewport().get_visible_rect().size
 	if s.y > s.x:
 		cam.keep_aspect = Camera3D.KEEP_WIDTH
-		cam.fov = 66.0
+		cam.fov = 62.0
 	else:
 		cam.keep_aspect = Camera3D.KEEP_HEIGHT
-		cam.fov = 60.0
+		cam.fov = 62.0
 
 
 func _build_player() -> void:
@@ -178,24 +209,41 @@ func _build_player() -> void:
 	light.omni_range = 2.6
 	player.add_child(light)
 
+	# Engine trail behind the cube.
+	var trail := CPUParticles3D.new()
+	var tm := BoxMesh.new()
+	tm.size = Vector3.ONE * 0.08
+	trail.mesh = tm
+	trail.material_override = Neon.glow(Neon.CYAN, 4.0)
+	trail.amount = 30
+	trail.lifetime = 0.5
+	trail.direction = Vector3(0, 0, 1)
+	trail.spread = 12.0
+	trail.initial_velocity_min = 5.0
+	trail.initial_velocity_max = 8.0
+	trail.gravity = Vector3.ZERO
+	var curve := Curve.new()
+	curve.add_point(Vector2(0, 1))
+	curve.add_point(Vector2(1, 0))
+	trail.scale_amount_curve = curve
+	trail.position = Vector3(0, 0, 0.3)
+	player.add_child(trail)
+
 	armor_shell = Node3D.new()
 	armor_shell.add_child(Neon.wire_box(Vector3.ONE * 0.5, 0.035, Neon.glow(Neon.LIME, 4.0)))
 	var shell := MeshInstance3D.new()
 	var sm := BoxMesh.new()
-	sm.size = Vector3.ONE * 1.0
+	sm.size = Vector3.ONE
 	shell.mesh = sm
 	shell.material_override = Neon.ghost(Neon.LIME, 0.12, 1.2, true)
 	armor_shell.add_child(shell)
 	armor_shell.visible = false
 	player.add_child(armor_shell)
-
-
-func cell_to_world(c: Vector3i) -> Vector3:
-	return Vector3(c.x - 1, c.y - 1, c.z - 1) * CELL
-
-
-func _place_player_instant() -> void:
 	player.position = cell_to_world(grid_pos)
+
+
+func cell_to_world(c: Vector2i) -> Vector3:
+	return Vector3(c.x * CELL, c.y * CELL, 0.0)
 
 
 # =========================================================================
@@ -208,19 +256,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_ESCAPE, KEY_P:
 				if state == State.PLAYING:
 					_set_paused(true)
-				return
 			KEY_A, KEY_LEFT:
-				try_move(Vector3i(-1, 0, 0))
+				try_move(Vector2i(-1, 0))
 			KEY_D, KEY_RIGHT:
-				try_move(Vector3i(1, 0, 0))
+				try_move(Vector2i(1, 0))
 			KEY_W, KEY_UP:
-				try_move(Vector3i(0, 1, 0))
+				try_move(Vector2i(0, 1))
 			KEY_S, KEY_DOWN:
-				try_move(Vector3i(0, -1, 0))
-			KEY_Q:
-				try_move(Vector3i(0, 0, -1))
-			KEY_E:
-				try_move(Vector3i(0, 0, 1))
+				try_move(Vector2i(0, -1))
 		return
 
 	if event is InputEventScreenTouch:
@@ -236,21 +279,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		var threshold := lerpf(110.0, 28.0, float(GameData.settings["swipe_sensitivity"]))
 		if d.length() >= threshold:
 			if absf(d.x) > absf(d.y):
-				try_move(Vector3i(1 if d.x > 0 else -1, 0, 0))
+				try_move(Vector2i(1 if d.x > 0 else -1, 0))
 			else:
-				try_move(Vector3i(0, -1 if d.y > 0 else 1, 0))
+				try_move(Vector2i(0, -1 if d.y > 0 else 1))
 			# Restart from here so one long drag can chain several moves.
 			_touches[event.index] = event.position
 
 
-func try_move(dir: Vector3i) -> void:
+func try_move(dir: Vector2i) -> void:
 	if state != State.PLAYING:
 		return
 	var target := grid_pos + dir
-	if target.x < 0 or target.x > 2 or target.y < 0 or target.y > 2 or target.z < 0 or target.z > 2:
-		# Bump against the arena edge.
+	if absi(target.x) > 1 or absi(target.y) > 1:
 		var bump := player_body.create_tween()
-		bump.tween_property(player_body, "position", Vector3(dir) * 0.12, 0.05)
+		bump.tween_property(player_body, "position", Vector3(dir.x, dir.y, 0) * 0.12, 0.05)
 		bump.tween_property(player_body, "position", Vector3.ZERO, 0.08)
 		return
 	grid_pos = target
@@ -259,15 +301,13 @@ func try_move(dir: Vector3i) -> void:
 	_move_tween = create_tween()
 	_move_tween.tween_property(player, "position", cell_to_world(grid_pos), MOVE_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Little squash in the direction of travel.
-	var squash := Vector3.ONE - Vector3(absi(dir.x), absi(dir.y), absi(dir.z)) * 0.25
-	player_body.scale = squash
-	var st := player_body.create_tween()
-	st.tween_property(player_body, "scale", Vector3.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	Sfx.play("depth" if dir.z != 0 else "move", rng.randf_range(0.95, 1.05))
+	# Quarter roll in the direction of travel.
+	var axis := Vector3(-dir.y, dir.x, 0).normalized()
+	player_body.quaternion = Quaternion(axis, -PI / 2.0)
+	player_body.create_tween().tween_property(player_body, "quaternion", Quaternion.IDENTITY, 0.16) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	Sfx.play("move", rng.randf_range(0.95, 1.05))
 	GameData.vibrate(12)
-	_update_depth_pips()
-	_check_pickups()
 
 
 # =========================================================================
@@ -275,14 +315,16 @@ func try_move(dir: Vector3i) -> void:
 # =========================================================================
 
 func _process(delta: float) -> void:
-	deco_ring.rotation.z += delta * 0.05
-	_update_shadows()
+	deco_ring.rotation.z += delta * 0.08
 	_update_camera(delta)
+	shadow.position = Vector3(player.position.x, -HALF + 0.01, 0)
+	shadow.visible = player.visible
 	if fps_label.visible:
 		fps_label.text = "FPS %d" % Engine.get_frames_per_second()
 
 	match state:
 		State.COUNTDOWN:
+			_scroll(delta, 4.0)
 			_process_countdown(delta)
 		State.PLAYING:
 			_process_playing(delta)
@@ -313,17 +355,35 @@ func _process_countdown(delta: float) -> void:
 
 
 func difficulty() -> float:
-	return minf(time_alive / 22.0, 9.0)
+	return minf(time_alive / 20.0, 10.0)
+
+
+## Moves the decorative track towards the camera.
+func _scroll(delta: float, spd: float) -> void:
+	var dz := spd * delta
+	distance += dz
+	floor_mat.set_shader_parameter("offset", distance)
+	for f in frames:
+		f.position.z += dz
+		if f.position.z > DESPAWN_Z:
+			f.position.z -= FRAME_COUNT * FRAME_SPACING
+	for s in streaks:
+		s.position.z += dz * 1.6
+		if s.position.z > DESPAWN_Z:
+			_reset_streak(s, SPAWN_Z)
 
 
 func _process_playing(delta: float) -> void:
 	time_alive += delta
-	score += delta * 10.0 * mult_factor
+	speed = minf(9.0 + difficulty() * 1.4, 23.0)
+	var dz := speed * delta
+	_scroll(delta, speed)
+	score += dz * mult_factor
 
 	# Effects
-	var frozen := freeze_time > 0.0
-	if frozen:
+	if freeze_time > 0.0:
 		freeze_time -= delta
+	var frozen := freeze_time > 0.0
 	if mult_time > 0.0:
 		mult_time -= delta
 		if mult_time <= 0.0:
@@ -332,44 +392,51 @@ func _process_playing(delta: float) -> void:
 		invuln_time -= delta
 		player_body.visible = fmod(invuln_time * 12.0, 1.0) < 0.6 or invuln_time <= 0.0
 
-	# Spawning
-	spawn_timer -= delta
-	if spawn_timer <= 0.0:
-		_spawn_obstacle()
-		spawn_timer = maxf(1.25, 3.3 - difficulty() * 0.3) * rng.randf_range(0.85, 1.15)
+	# Level generation
+	gap_left -= dz
+	if gap_left <= 0.0:
+		_spawn_gate()
+		var gap_time := maxf(0.75, 1.55 - difficulty() * 0.09) * rng.randf_range(0.85, 1.3)
+		gap_left = maxf(speed * gap_time, 9.0)
 	pickup_timer -= delta
-	if pickup_timer <= 0.0:
+	if pickup_timer <= 0.0 and gap_left > 8.0:
 		_spawn_pickup()
 		pickup_timer = GameData.pickup_interval() * rng.randf_range(0.8, 1.2)
 
-	# Hazards
+	# Gates
 	for o in obstacles:
-		o.set_frozen(freeze_time > 0.0)
+		o.position.z += dz
+		o.set_frozen(frozen)
+		o.set_tint(frozen)
 		o.step(delta)
-		if o.survived and not o.has_meta("counted"):
-			o.set_meta("counted", true)
+		if not o.passed and o.position.z > 0.9:
+			o.passed = true
+			gates_passed += 1
 			var bonus := 20 * mult_factor
 			score += bonus
 			_popup("+%d" % bonus, Neon.CYAN)
 	for o in obstacles.duplicate():
-		if o.finished:
+		if o.position.z > GATE_DESPAWN_Z:
 			obstacles.erase(o)
 			o.queue_free()
 	if invuln_time <= 0.0:
 		for o in obstacles:
-			if o.hits(player.position, PLAYER_R):
+			if absf(o.position.z) < 1.2 and o.hits(player.global_position, PLAYER_R):
 				_on_hit()
 				break
 
-	# Pickups
+	# Pickups ride with the track.
 	for p in pickups.duplicate():
-		if p.finished:
+		p.position.z += dz
+		if p.cell == grid_pos and absf(p.position.z) < 0.5:
+			_collect(p)
+			pickups.erase(p)
+			p.queue_free()
+		elif p.position.z > GATE_DESPAWN_Z:
 			pickups.erase(p)
 			p.queue_free()
 
 	# Visuals
-	player_body.rotation.y = sin(time_alive * 1.7) * 0.12
-	player_body.rotation.x = sin(time_alive * 1.3) * 0.08
 	armor_shell.visible = has_armor
 	if has_armor:
 		armor_shell.rotation.y += delta * 1.2
@@ -377,89 +444,38 @@ func _process_playing(delta: float) -> void:
 	_update_hud()
 
 
-func _update_shadows() -> void:
-	var p := player.position
-	shadows[0].position = Vector3(p.x, -HALF + 0.01, p.z)
-	shadows[1].position = Vector3(p.x, p.y, -HALF + 0.01)
-	shadows[2].position = Vector3(-HALF + 0.01, p.y, p.z)
-	for s in shadows:
-		s.visible = player.visible
-
-
 func _update_camera(delta: float) -> void:
 	shake = maxf(0.0, shake - delta * 2.5)
+	# Lean slightly towards the player for a dynamic feel.
+	var target := Vector3(player.position.x * 0.25, 1.1 + player.position.y * 0.15, 6.2)
+	cam.position = cam.position.lerp(target, minf(1.0, delta * 6.0))
 	cam.h_offset = rng.randf_range(-1.0, 1.0) * shake * 0.25
 	cam.v_offset = rng.randf_range(-1.0, 1.0) * shake * 0.25
 
 
 # =========================================================================
-# Spawning
+# Level generation
 # =========================================================================
 
-func _spawn_obstacle() -> void:
-	if obstacles.size() >= MAX_OBSTACLES:
-		return
+func _spawn_gate() -> void:
 	var diff := difficulty()
-	var has_laser := false
-	var has_wall := false
-	for o in obstacles:
-		if o is LaserRig:
-			has_laser = true
-		elif o is WallObstacle:
-			has_wall = true
-	var kinds: Array[String] = []
-	var weights: Array[float] = []
-	if not has_laser:
-		kinds.append("laser")
-		weights.append(5.0)
-	if not has_wall and time_alive > 4.0:
-		kinds.append("wall")
-		weights.append(3.0)
-	if time_alive > 6.0:
-		kinds.append("orb")
-		weights.append(2.0 + diff * 0.3)
-	if kinds.is_empty():
-		return
-	match kinds[rng.rand_weighted(PackedFloat32Array(weights))]:
-		"laser":
-			var rig := LaserRig.new()
-			obstacles_root.add_child(rig)
-			rig.build(rng, diff)
-			obstacles.append(rig)
-			Sfx.play("warn")
-		"wall":
-			var wall := WallObstacle.new()
-			obstacles_root.add_child(wall)
-			wall.build(rng, diff)
-			obstacles.append(wall)
-		"orb":
-			var count := mini(1 + rng.randi_range(0, int(diff / 2.0)), 4)
-			for i in count:
-				var orb := OrbShot.new()
-				obstacles_root.add_child(orb)
-				orb.build(rng, diff)
-				orb.warn_time += i * 0.35
-				obstacles.append(orb)
-			Sfx.play("warn", 1.4)
+	var weights := PackedFloat32Array([4.0, 3.0, 2.5 + diff * 0.2])
+	var gate: Obstacle
+	match rng.rand_weighted(weights):
+		0:
+			gate = LaserGate.new()
+		1:
+			gate = WallObstacle.new()
+		_:
+			gate = BlockGate.new()
+	add_child(gate)
+	gate.position = Vector3(0, 0, SPAWN_Z)
+	gate.call("build", rng, diff)
+	obstacles.append(gate)
 
 
 func _spawn_pickup() -> void:
-	if pickups.size() >= 2:
-		return
-	var free_cells: Array[Vector3i] = []
-	for x in 3:
-		for y in 3:
-			for z in 3:
-				var c := Vector3i(x, y, z)
-				if c == grid_pos:
-					continue
-				var taken := false
-				for p in pickups:
-					if p.cell == c:
-						taken = true
-				if not taken:
-					free_cells.append(c)
-	var cell := free_cells[rng.randi_range(0, free_cells.size() - 1)]
+	var cell := Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1))
 	var weights := PackedFloat32Array([
 		1.0,
 		0.15 if has_armor else GameData.armor_weight(),
@@ -468,21 +484,13 @@ func _spawn_pickup() -> void:
 	var kind: Pickup.Kind = rng.rand_weighted(weights) as Pickup.Kind
 	var p := Pickup.new()
 	add_child(p)
-	p.build(kind, cell, cell_to_world(cell))
+	p.build(kind, cell, cell_to_world(cell) + Vector3(0, 0, SPAWN_Z + gap_left * 0.5))
 	pickups.append(p)
-
-
-func _check_pickups() -> void:
-	for p in pickups.duplicate():
-		if p.cell == grid_pos and not p.finished:
-			_collect(p)
-			pickups.erase(p)
-			p.queue_free()
 
 
 func _collect(p: Pickup) -> void:
 	var col := Pickup.color_of(p.kind)
-	_burst(p.global_position, col, 24, 0.08)
+	_burst(player.position, col, 24, 0.08)
 	GameData.vibrate(25)
 	match p.kind:
 		Pickup.Kind.FREEZE:
@@ -596,7 +604,7 @@ func _build_hud() -> void:
 	margin.add_theme_constant_override("margin_left", 28)
 	margin.add_theme_constant_override("margin_right", 28)
 	margin.add_theme_constant_override("margin_top", 56)
-	margin.add_theme_constant_override("margin_bottom", 44)
+	margin.add_theme_constant_override("margin_bottom", 60)
 	hud.add_child(margin)
 
 	var col := VBoxContainer.new()
@@ -604,7 +612,6 @@ func _build_hud() -> void:
 	col.add_theme_constant_override("separation", 12)
 	margin.add_child(col)
 
-	# Top bar
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(top)
@@ -617,8 +624,11 @@ func _build_hud() -> void:
 	score_box.add_child(score_label)
 	best_label = UI.label("РЕКОРД %d" % GameData.best_score, 26, Neon.PURPLE, HORIZONTAL_ALIGNMENT_LEFT)
 	score_box.add_child(best_label)
+	distance_label = UI.label("0 м", 26, Neon.MAGENTA, HORIZONTAL_ALIGNMENT_LEFT)
+	score_box.add_child(distance_label)
 	var pause_btn := UI.button("II", Neon.MAGENTA, 40, 96)
 	pause_btn.custom_minimum_size = Vector2(96, 96)
+	pause_btn.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	pause_btn.pressed.connect(func(): if state == State.PLAYING: _set_paused(true))
 	top.add_child(pause_btn)
 
@@ -645,36 +655,10 @@ func _build_hud() -> void:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(spacer)
 
-	hint_label = UI.label("Свайп — двигаться\nКнопки — вглубь / ближе", 28, Neon.CYAN)
+	hint_label = UI.label("Свайпай влево, вправо,\nвверх и вниз", 30, Neon.CYAN)
 	col.add_child(hint_label)
 	if GameData.games_played > 2:
 		hint_label.visible = false
-
-	# Bottom controls: depth buttons and a depth indicator between them.
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 18)
-	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(bottom)
-	var far_btn := UI.button("ВГЛУБЬ", Neon.MAGENTA, 30, 120, false)
-	far_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	far_btn.button_down.connect(func(): try_move(Vector3i(0, 0, -1)))
-	bottom.add_child(far_btn)
-	var pips := VBoxContainer.new()
-	pips.alignment = BoxContainer.ALIGNMENT_CENTER
-	pips.add_theme_constant_override("separation", 8)
-	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bottom.add_child(pips)
-	for i in 3:
-		var pip := Panel.new()
-		pip.custom_minimum_size = Vector2(70 - (2 - i) * 12, 22)
-		pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pips.add_child(pip)
-		depth_pips.append(pip)
-	var near_btn := UI.button("БЛИЖЕ", Neon.CYAN, 30, 120, false)
-	near_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	near_btn.button_down.connect(func(): try_move(Vector3i(0, 0, 1)))
-	bottom.add_child(near_btn)
 
 	countdown_label = UI.label("", 160, Neon.MAGENTA)
 	countdown_label.set_anchors_preset(Control.PRESET_CENTER)
@@ -682,8 +666,6 @@ func _build_hud() -> void:
 	countdown_label.position = Vector2(-300, -110)
 	countdown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(countdown_label)
-
-	_update_depth_pips()
 
 
 func _chip(color: Color) -> Label:
@@ -699,18 +681,9 @@ func _chip(color: Color) -> Label:
 	return l
 
 
-func _update_depth_pips() -> void:
-	# Top pip = far layer (z = 0), bottom pip = near layer (z = 2).
-	for i in depth_pips.size():
-		var on := i == grid_pos.z
-		var color := Neon.CYAN if on else Neon.PURPLE
-		var s := UI.box(color, 0.0, 6, 2, 10 if on else 0)
-		s.bg_color = Color(color, 0.9 if on else 0.1)
-		depth_pips[i].add_theme_stylebox_override("panel", s)
-
-
 func _update_hud() -> void:
 	score_label.text = str(int(score))
+	distance_label.text = "%d м" % int(distance)
 	freeze_chip.visible = freeze_time > 0.0
 	if freeze_chip.visible:
 		freeze_chip.text = "ЗАМОРОЗКА %.1f" % freeze_time
@@ -719,7 +692,7 @@ func _update_hud() -> void:
 	if mult_chip.visible:
 		mult_chip.text = "x%d  %.1f" % [mult_factor, mult_time]
 	frost.color.a = lerpf(frost.color.a, 0.09 if freeze_time > 0.0 else 0.0, 0.15)
-	if hint_label.visible and time_alive > 6.0:
+	if hint_label.visible and time_alive > 5.0:
 		hint_label.modulate.a = maxf(0.0, hint_label.modulate.a - 0.02)
 
 
@@ -783,7 +756,7 @@ func _show_game_over(final_score: int, new_record: bool, earned: int) -> void:
 		t.tween_property(rec, "modulate:a", 1.0, 0.4)
 	else:
 		vb.add_child(UI.label("Рекорд: %d" % GameData.best_score, 30, Neon.PURPLE))
-	vb.add_child(UI.label("Время: %.1f с" % time_alive, 30, Neon.CYAN))
+	vb.add_child(UI.label("Дистанция: %d м   Ворот: %d" % [int(distance), gates_passed], 28, Neon.CYAN))
 	vb.add_child(UI.label("+%d монет" % earned, 34, Neon.GOLD))
 	var again := UI.button("ЕЩЁ РАЗ", Neon.CYAN, 38, 116)
 	again.pressed.connect(_restart)
