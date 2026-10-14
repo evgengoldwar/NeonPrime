@@ -275,12 +275,25 @@ func _master_panel() -> Control:
 	var iv := UI.vbox(4)
 	iv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if sig != "":
-		iv.add_child(UI.label("Фирменная: %s ×2 в каждом забеге" % Data.card_name(sig), 20, UI.GOLD))
+		iv.add_child(UI.label("Фирменная карта: %s ×2" % Data.card_name(sig), 20, UI.GOLD))
+		iv.add_child(UI.label(Data.card_text(sig, false, Game.card_level_for(sig, m.id)), 18, UI.TEXT))
+		iv.add_child(UI.label("Всегда добавляется в колоду забега этого Хозяина", 16, UI.DIM))
 	iv.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 18, UI.GREEN))
 	iv.add_child(UI.stat("coin", "Казна %d (+%d за уровень игрока)" % [int(m.treasury), Progress.treasury_bonus()], UI.GOLD, 18))
 	info.add_child(iv)
 	v.add_child(info)
-	if int(Game.meta.notoriety_max) > 0:
+	v.add_child(_notoriety_box())
+	return p
+
+
+## Дурная слава: выбор уровня и что он делает.
+func _notoriety_box() -> Control:
+	var p := UI.framed("panel_dark", 10)
+	var v := UI.vbox(6)
+	p.add_child(v)
+	var cur := int(Game.meta.notoriety_pick)
+	var top_max := int(Game.meta.notoriety_max)
+	if top_max > 0:
 		var nh := UI.hbox(8)
 		var minus := UI.button("−", _set_notoriety.bind(-1), 28, 56)
 		minus.custom_minimum_size = Vector2(64, 56)
@@ -295,6 +308,21 @@ func _master_panel() -> Control:
 		plus.size_flags_horizontal = Control.SIZE_SHRINK_END
 		nh.add_child(plus)
 		v.add_child(nh)
+	else:
+		v.add_child(UI.label("Дурная слава: 0", 22, UI.ACCENT.lightened(0.3), HORIZONTAL_ALIGNMENT_CENTER))
+	if cur == 0:
+		v.add_child(UI.label("Обычная сложность. Победа открывает Дурную славу 1: герои злее, а награды больше.", 18, UI.DIM))
+	else:
+		var lines := []
+		for i in cur:
+			lines.append("%d. %s" % [i + 1, Data.notoriety[i]])
+		v.add_child(UI.label("Усложнения:\n" + "\n".join(lines), 18, Color("#f6757a")))
+		var reward := "Награда: Души +%d%%" % (cur * 10)
+		if cur >= 3:
+			reward += ", за победу — Магический сундук вместо Золотого"
+		v.add_child(UI.label(reward, 18, UI.GREEN))
+	if top_max < Data.notoriety.size():
+		v.add_child(UI.label("Следующий уровень (%d): %s — откроется после победы на уровне %d" % [top_max + 1, Data.notoriety[top_max], top_max], 16, UI.DIM))
 	return p
 
 
@@ -361,7 +389,7 @@ func _slot_view(i: int) -> Control:
 				l.text = Progress.format_time(Progress.time_left(i))
 				l.add_theme_color_override("font_color", UI.SOUL)
 			"ready":
-				l.text = "ОТКРЫТЬ!"
+				l.text = "ГОТОВ!"
 				l.add_theme_color_override("font_color", UI.GREEN)
 				var tw := ic.create_tween().set_loops()
 				tw.tween_property(ic, "modulate", Color(1.4, 1.3, 1.0), 0.5)
@@ -517,12 +545,26 @@ func _deck() -> void:
 			ug.add_child(_hidden_card(id, false))
 		body.add_child(ug)
 	if not locked.is_empty():
-		body.add_child(_section("В закрытых крыльях Замка: %d" % locked.size(), UI.DIM))
-		body.add_child(UI.label("Открой крыло за Души — его карты начнут выпадать из сундуков.", 18, UI.DIM))
-		var lg := _grid()
-		for id in locked:
-			lg.add_child(_hidden_card(id, true))
-		body.add_child(lg)
+		body.add_child(_section("Закрыто крыльями Замка: %d" % locked.size(), UI.DIM))
+		body.add_child(UI.label("Эти карты не выпадают из сундуков, пока не откроешь их крыло во вкладке Замок за Души. Открытое крыло даёт ещё и нового Хозяина.", 18, UI.DIM))
+		for w in Data.wings:
+			var ids := []
+			for id in locked:
+				if Data.cards[id].set == w.id:
+					ids.append(id)
+			if ids.is_empty():
+				continue
+			var wl := UI.label("Крыло «%s» · Хозяин %s · %d Душ" % [w.name, Data.masters[w.master].name, int(w.cost)], 22, UI.SOUL)
+			body.add_child(wl)
+			var lg := _grid()
+			for id in ids:
+				lg.add_child(_hidden_card(id, true))
+			body.add_child(lg)
+	var loc := 0
+	for c in Data.card_list:
+		if str(c.set).begins_with("loc_"):
+			loc += 1
+	body.add_child(UI.label("Ещё %d карт локаций в коллекцию не входят: их предлагают только в забеге, в своей локации." % loc, 16, UI.DIM))
 
 
 func _grid() -> GridContainer:
@@ -571,9 +613,16 @@ func _coll_card(id: String, deck_slot: int) -> Control:
 func _hidden_card(id: String, locked: bool) -> Control:
 	var v := UI.vbox(2)
 	var mc := UI.mini_card({"id": id}, 160, 176)
-	mc.modulate = Color(0.15, 0.12, 0.2, 0.9) if locked else Color(0.35, 0.3, 0.45)
+	mc.modulate = Color(0.35, 0.3, 0.45)
 	v.add_child(mc)
-	v.add_child(UI.label(Data.RARITY_NAMES.get(Data.cards[id].rarity, ""), 16, Data.RARITY_COLORS.get(Data.cards[id].rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER, false))
+	if locked:
+		var lh := UI.hbox(4)
+		lh.alignment = BoxContainer.ALIGNMENT_CENTER
+		lh.add_child(UI.icon("icons/lock", 2))
+		lh.add_child(UI.label("Закрыто", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER, false))
+		v.add_child(lh)
+	else:
+		v.add_child(UI.label(Data.RARITY_NAMES.get(Data.cards[id].rarity, ""), 16, Data.RARITY_COLORS.get(Data.cards[id].rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER, false))
 	UI.ignore_mouse(v)
 	v.mouse_filter = Control.MOUSE_FILTER_STOP
 	v.gui_input.connect(_hidden_input.bind(id))
