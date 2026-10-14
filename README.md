@@ -11,6 +11,7 @@
 ./build_apk.sh            # подписанный APK: build/ya-podzemelye.apk
 ./build_apk.sh debug      # отладочный APK: build/ya-podzemelye-debug.apk
 ./build_apk.sh install    # собрать и сразу установить на телефон по USB
+./build_apk.sh log        # запустить игру на телефоне и сохранить лог в build/crash.txt
 ```
 
 Работает на Linux и macOS (на Windows — через WSL). Нужны только `bash`, `curl`, `unzip` и `tar`. При первом запуске скрипт сам скачает в `.build-cache/` Godot 4.7 с шаблонами экспорта, JDK 17 и Android SDK. Это около 3 ГБ и 10–20 минут, следующие сборки идут за минуту.
@@ -33,11 +34,13 @@ godot --headless --path . res://tools/smoke_test.tscn
 godot --path . res://tools/touch_test.tscn
 ```
 
-Если игра падает на телефоне, подключите его по USB с включённой «Отладкой по USB» и снимите лог:
+Если игра падает на телефоне, подключите его по USB с включённой «Отладкой по USB» и запустите:
 
 ```
-adb logcat -c && adb logcat -s godot AndroidRuntime DEBUG > crash.txt
+./build_apk.sh log
 ```
+
+Скрипт сам запустит игру на телефоне, подождёт 25 секунд и сохранит полный лог в `build/crash.txt`.
 
 Игра рисует через renderer Compatibility (OpenGL ES 3): он работает почти на всех телефонах, в отличие от Vulkan.
 

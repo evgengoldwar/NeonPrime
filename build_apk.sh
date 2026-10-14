@@ -5,6 +5,7 @@
 #   ./build_apk.sh            — подписанный release-APK (по умолчанию)
 #   ./build_apk.sh debug      — debug-APK (подписан отладочным ключом)
 #   ./build_apk.sh install    — release-APK и сразу установка на телефон по USB (нужен adb)
+#   ./build_apk.sh log        — запустить игру на телефоне по USB и сохранить лог в build/crash.txt
 #
 # При первом запуске скрипт сам скачает в .build-cache/ всё, чего нет:
 #   Godot (headless-редактор) и шаблоны экспорта, JDK 17, Android SDK.
@@ -21,9 +22,9 @@ set -euo pipefail
 
 MODE="${1:-release}"
 case "$MODE" in
-  release|debug|install) ;;
+  release|debug|install|log) ;;
   -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-  *) echo "Неизвестный режим: $MODE (release | debug | install)"; exit 1 ;;
+  *) echo "Неизвестный режим: $MODE (release | debug | install | log)"; exit 1 ;;
 esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -194,6 +195,49 @@ if ! sdk_ready || [[ ! -d "$ANDROID_HOME/platforms/$ANDROID_PLATFORM" && ! -d "$
 fi
 say "Android SDK: $ANDROID_HOME"
 
+# ------------------------------------------------------------------ лог с телефона
+
+PACKAGE="com.neonprime.yapodzemelye"
+
+find_adb() {
+  if [[ -x "$ANDROID_HOME/platform-tools/adb" ]]; then
+    echo "$ANDROID_HOME/platform-tools/adb"
+  else
+    command -v adb || true
+  fi
+}
+
+if [[ "$MODE" == "log" ]]; then
+  ADB="$(find_adb)"
+  [[ -n "$ADB" ]] || die "adb не найден"
+  if ! "$ADB" get-state >/dev/null 2>&1; then
+    die "телефон не найден. Подключите его по USB, включите «Отладку по USB» и подтвердите доступ на экране телефона"
+  fi
+  "$ADB" shell pm path "$PACKAGE" >/dev/null 2>&1 || die "игра не установлена на телефоне ($PACKAGE)"
+  LOG_FILE="$OUT_DIR/crash.txt"
+  say "Телефон: $("$ADB" shell getprop ro.product.manufacturer | tr -d '\r') $("$ADB" shell getprop ro.product.model | tr -d '\r'), Android $("$ADB" shell getprop ro.build.version.release | tr -d '\r')"
+  "$ADB" shell am force-stop "$PACKAGE" || true
+  "$ADB" logcat -c || true
+  say "Запускаю игру, ничего не трогайте 25 секунд"
+  "$ADB" shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  sleep 25
+  {
+    echo "Телефон: $("$ADB" shell getprop ro.product.manufacturer) $("$ADB" shell getprop ro.product.model)"
+    echo "Android: $("$ADB" shell getprop ro.build.version.release), SDK $("$ADB" shell getprop ro.build.version.sdk)"
+    echo "ABI: $("$ADB" shell getprop ro.product.cpu.abi)"
+    echo "Версия игры: $("$ADB" shell dumpsys package "$PACKAGE" | grep -m1 versionName)"
+    echo "================================================================"
+    "$ADB" logcat -d -v time
+  } > "$LOG_FILE" 2>&1
+  say "Лог сохранён: $LOG_FILE"
+  say "Самое важное из него:"
+  grep -E "godot|Godot|FATAL|AndroidRuntime|DEBUG|libc|SIGSEGV|SIGABRT|backtrace|ANR|$PACKAGE" "$LOG_FILE" \
+    | grep -vE "chatty|GnssLocation" | tail -n 60 || true
+  echo
+  say "Пришлите файл $LOG_FILE целиком"
+  exit 0
+fi
+
 # ------------------------------------------------------------------ ключи подписи
 
 mkdir -p "$KEY_DIR"
@@ -287,8 +331,7 @@ fi
 say "Готово: $APK ($(du -h "$APK" | cut -f1))"
 
 if [[ "$MODE" == "install" ]]; then
-  ADB="$ANDROID_HOME/platform-tools/adb"
-  [[ -x "$ADB" ]] || ADB="$(command -v adb || true)"
+  ADB="$(find_adb)"
   [[ -n "$ADB" ]] || die "adb не найден"
   say "Устанавливаю на телефон (включите «Отладку по USB»)"
   "$ADB" install -r "$APK"
