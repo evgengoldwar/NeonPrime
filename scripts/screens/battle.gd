@@ -360,7 +360,7 @@ func _refresh_cells() -> void:
 
 func _cell_card(c: Dictionary, idx: int) -> Control:
 	var up: bool = b.card_up(c)
-	var d: Dictionary = Data.cdef(c.id, up)
+	var d: Dictionary = b.def_of(c)
 	var h := UI.hbox(10)
 	var art := UI.framed(UI.card_frame(c.id), 4)
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -548,7 +548,7 @@ func _notification(what: int) -> void:
 func _tap(kind: String, idx: int) -> void:
 	if b.phase != "prep":
 		if kind == "cell" and b.cells[idx] != null:
-			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]))
+			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
 		return
 	if kind == "hand":
 		if idx >= b.hand.size():
@@ -573,16 +573,16 @@ func _tap(kind: String, idx: int) -> void:
 				Game.main.toast("Не хватает Тьмы" if b.cells[idx] == null or not b.cells[idx].locked else "Клетка занята")
 			_refresh()
 		elif b.cells[idx] != null:
-			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]))
+			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
 
 
 func _long_press(kind: String, idx: int) -> void:
 	if kind == "hand" and idx < b.hand.size():
 		var c = b.hand[idx]
-		UI.card_popup(self, c.id, b.card_up(c))
+		UI.card_popup(self, c.id, b.card_up(c), b.card_lvl(c))
 	elif kind == "cell" and b.cells[idx] != null:
 		var c = b.cells[idx]
-		UI.card_popup(self, c.id, b.card_up(c))
+		UI.card_popup(self, c.id, b.card_up(c), b.card_lvl(c))
 
 
 func _hero_input(ev: InputEvent, uid: int) -> void:

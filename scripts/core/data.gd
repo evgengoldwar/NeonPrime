@@ -46,6 +46,7 @@ var upgrades := []
 var collections := []
 var notoriety := []
 var achievements := []
+var prog := {}            # прогрессия коллекции: data/meta.json
 
 var _cdef_cache := {}
 
@@ -86,6 +87,7 @@ func _ready() -> void:
 	collections = w.collections
 	notoriety = w.notoriety
 	achievements = w.achievements
+	prog = load_json("res://data/meta.json")
 
 
 func load_json(path: String):
@@ -115,20 +117,49 @@ static func normalize(v):
 
 
 ## Определение карты с учётом улучшения «+».
-func cdef(id: String, up: bool = false) -> Dictionary:
-	var key := id + ("+" if up else "")
+## Определение карты с учётом улучшения «+» и уровня коллекции.
+func cdef(id: String, up: bool = false, lvl: int = 1) -> Dictionary:
+	var key := "%s%s@%d" % [id, "+" if up else "", lvl]
 	if _cdef_cache.has(key):
 		return _cdef_cache[key]
 	var base: Dictionary = cards.get(id, {})
 	var d := base.duplicate(true)
 	if up and base.has("up"):
 		for k in base.up.keys():
-			d[k] = base.up[k]
+			d[k] = base.up[k].duplicate(true) if base.up[k] is Array or base.up[k] is Dictionary else base.up[k]
 	d["is_up"] = up
+	d["lvl"] = lvl
 	if not d.has("kw"):
 		d["kw"] = []
+	if lvl > 1:
+		_scale_def(d, lvl)
 	_cdef_cache[key] = d
 	return d
+
+
+## Действия, числа которых растут с уровнем. Замедление, Страх, Тьма и добор не растут:
+## иначе экспоненциальные комбо (Шипы ×2 за стак) ломаются.
+const SCALED_ACTIONS := ["damage", "poison", "burn", "curse", "greed", "gold", "monsters_hp"]
+
+
+func level_factor(lvl: int) -> float:
+	return 1.0 + float(prog.get("level_bonus", 0.15)) * (lvl - 1)
+
+
+func _scaled(n: int, lvl: int) -> int:
+	return maxi(n, int(round(n * level_factor(lvl))))
+
+
+func _scale_def(d: Dictionary, lvl: int) -> void:
+	for k in ["hp", "atk"]:
+		if int(d.get(k, 0)) > 0:
+			d[k] = _scaled(int(d[k]), lvl)
+	if d.get("special", "") in ["dark_altar", "cauldron"]:
+		d["p"] = _scaled(int(d.p), lvl)
+	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
+		for a in d.get(key, []):
+			if a.a in SCALED_ACTIONS and int(a.get("n", 0)) > 0:
+				a["n"] = _scaled(int(a.n), lvl)
 
 
 func card_name(id: String, up: bool = false) -> String:
@@ -156,33 +187,69 @@ const ACTION_NAMES := {
 
 
 ## Что меняет улучшение «+»: список строк вида «Стоимость: 1 → 0».
-func upgrade_changes(id: String) -> Array:
-	var a := cdef(id, false)
-	var b := cdef(id, true)
-	var out := []
-	for pair in [["cost", "Стоимость"], ["hp", "Здоровье"], ["atk", "Атака"]]:
-		if a.has(pair[0]) and a.get(pair[0]) != b.get(pair[0]):
-			out.append("%s: %d → %d" % [pair[1], int(a[pair[0]]), int(b[pair[0]])])
-	var simple := true
+func upgrade_changes(id: String, lvl: int = 1) -> Array:
+	var a := cdef(id, false, lvl)
+	var b := cdef(id, true, lvl)
+	var out := def_changes(a, b)
+	var simple := _same_shape(a, b)
+	var p_changed: bool = a.get("p") != b.get("p") and not a.get("special", "") in ["dark_altar", "cauldron"]
+	if p_changed or not simple or out.is_empty():
+		var t: String = cards.get(id, {}).get("text_up", "")
+		if t != "" and not t.begins_with("Стоит"):
+			out.append(t)
+	return out
+
+
+## Что даёт следующий уровень коллекции: «Урон: 3 → 4».
+func level_changes(id: String, from_lvl: int, to_lvl: int) -> Array:
+	return def_changes(cdef(id, false, from_lvl), cdef(id, false, to_lvl))
+
+
+## Короткая сводка силы карты на уровне: «Урон 4 · HP 8».
+func level_summary(id: String, up: bool, lvl: int) -> String:
+	if lvl <= 1:
+		return ""
+	var parts := []
+	for line in def_changes(cdef(id, up, 1), cdef(id, up, lvl)):
+		var s: String = line
+		parts.append(s.split(":")[0] + " " + s.split("→ ")[-1])
+	return " · ".join(parts)
+
+
+func _same_shape(a: Dictionary, b: Dictionary) -> bool:
 	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
 		var la: Array = a.get(key, [])
 		var lb: Array = b.get(key, [])
 		if la.size() != lb.size():
-			simple = false
+			return false
+		for i in la.size():
+			if la[i].get("a") != lb[i].get("a"):
+				return false
+	return true
+
+
+## Разница двух определений карты в виде строк «Название: было → стало».
+func def_changes(a: Dictionary, b: Dictionary) -> Array:
+	var out := []
+	for pair in [["cost", "Стоимость"], ["hp", "Здоровье"], ["atk", "Атака"]]:
+		if a.has(pair[0]) and a.get(pair[0]) != b.get(pair[0]):
+			out.append("%s: %d → %d" % [pair[1], int(a[pair[0]]), int(b[pair[0]])])
+	if a.get("special", "") in ["dark_altar", "cauldron"] and a.get("p") != b.get("p"):
+		out.append("%s: %d → %d" % ["Бонус" if a.special == "dark_altar" else "Золото", int(a.p), int(b.p)])
+	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
+		var la: Array = a.get(key, [])
+		var lb: Array = b.get(key, [])
+		if la.size() != lb.size():
 			continue
 		for i in la.size():
 			var x: Dictionary = la[i]
 			var y: Dictionary = lb[i]
 			if x.get("a") != y.get("a"):
-				simple = false
-			elif x.get("n") != y.get("n"):
+				continue
+			if x.get("n") != y.get("n"):
 				out.append("%s: %d → %d" % [ACTION_NAMES.get(x.a, x.a), int(x.get("n", 0)), int(y.get("n", 0))])
 			elif x.get("if_greed") != y.get("if_greed"):
 				out.append("Порог Жадности: %d → %d" % [int(x.if_greed), int(y.if_greed)])
-	if a.get("p") != b.get("p") or not simple or out.is_empty():
-		var t: String = cards.get(id, {}).get("text_up", "")
-		if t != "" and not t.begins_with("Стоит"):
-			out.append(t)
 	return out
 
 

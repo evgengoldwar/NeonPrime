@@ -3,6 +3,8 @@ extends Control
 
 const UI := preload("res://scripts/ui/ui.gd")
 
+var embedded := false   # встроен во вкладку главного меню
+
 
 func _ready() -> void:
 	_build()
@@ -21,7 +23,8 @@ func _build() -> void:
 	body.add_child(UI.label("Удобство и разнообразие, а не прямая сила.", 18, UI.DIM))
 	for u in Data.upgrades:
 		body.add_child(_upgrade_row(u))
-	lay.footer.add_child(UI.button("Назад", func(): Game.main.goto("menu"), 24, 70))
+	if not embedded:
+		lay.footer.add_child(UI.button("Назад", func(): Game.main.goto("menu"), 24, 70))
 
 
 func _wing_row(w: Dictionary) -> Control:
@@ -105,6 +108,7 @@ func _buy_wing(w: Dictionary) -> void:
 		return
 	Game.meta.souls = int(Game.meta.souls) - int(w.cost)
 	Game.meta.wings.append(w.id)
+	Progress.on_wing(w.id, true)
 	Game.save_meta()
 	Game.main.toast("Открыто крыло «%s» и Хозяин %s" % [w.name, Data.masters[w.master].name])
 	_build()

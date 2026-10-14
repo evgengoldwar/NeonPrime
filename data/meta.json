@@ -1,0 +1,58 @@
+{
+  "max_level": 8,
+  "level_bonus": 0.15,
+  "mastery_level": 5,
+  "copies": {
+    "common": [2, 4, 8, 16, 32, 64, 128],
+    "rare": [1, 2, 4, 8, 16, 32, 64],
+    "epic": [1, 1, 2, 4, 8, 16, 32],
+    "legendary": [1, 1, 1, 2, 3, 5, 8]
+  },
+  "gold_cost": [5, 20, 50, 150, 400, 1000, 2000],
+  "upgrade_xp": [4, 10, 25, 50, 100, 200, 400],
+  "player_xp": [20, 50, 100, 200, 350, 600, 1000, 1600, 2500, 4000],
+  "player_level_treasury": 1,
+  "deck_size": 8,
+  "starter_cards": ["slime", "spikes", "bats", "ghost", "skeleton", "false_chest", "torch", "cave_in"],
+  "signature": {
+    "dark_lord": "dark_ritual", "necromancer": "zombie", "goblin_king": "wolf",
+    "alchemist": "poison_ivy", "smith": "crusher", "dragoness": "kobold"
+  },
+  "affinity": {
+    "dark_lord": {"set": "", "text": "Без темы: подходит любая колода, Казна больше"},
+    "necromancer": {"set": "crypt", "text": "Карты Склепа (нежить) +1 уровень в забеге"},
+    "goblin_king": {"set": "lair", "text": "Карты Логова (звери) +1 уровень в забеге"},
+    "alchemist": {"set": "lab", "text": "Карты Лаборатории (яды) +1 уровень в забеге"},
+    "smith": {"set": "forge", "text": "Карты Кузни (механизмы) +1 уровень в забеге"},
+    "dragoness": {"set": "dragon", "text": "Карты Драконьего гнезда (огонь) +1 уровень в забеге"}
+  },
+  "slots": 4,
+  "free_chest_hours": 4,
+  "chests": {
+    "wood": {"name": "Деревянный сундук", "time": 60, "gold": [10, 20], "cards": 6, "kinds": 2,
+      "rare": [0.3, 1], "epic": [0, 0], "legendary": [0, 0], "gems_per_open": 1},
+    "silver": {"name": "Серебряный сундук", "time": 300, "gold": [25, 45], "cards": 15, "kinds": 3,
+      "rare": [1, 2], "epic": [0.05, 1], "legendary": [0, 0]},
+    "gold": {"name": "Золотой сундук", "time": 1200, "gold": [60, 100], "cards": 30, "kinds": 4,
+      "rare": [1, 5], "epic": [0.3, 1], "legendary": [0.02, 1]},
+    "magic": {"name": "Магический сундук", "time": 3600, "gold": [150, 250], "cards": 60, "kinds": 5,
+      "rare": [1, 10], "epic": [1, 2], "legendary": [0.1, 1]},
+    "legendary": {"name": "Легендарный сундук", "time": 10800, "gold": [200, 300], "cards": 21, "kinds": 3,
+      "rare": [0, 0], "epic": [0, 0], "legendary": [1, 1]}
+  },
+  "chest_order": ["wood", "silver", "gold", "magic", "legendary"],
+  "gems": {"win": 5, "boss": 1, "achievement": 10, "daily": 2, "minutes_per_gem": 6},
+  "shop": {
+    "free_gold": 10,
+    "offers": [
+      {"rarity": "common", "copies": 10, "price": 30},
+      {"rarity": "rare", "copies": 3, "price": 90},
+      {"rarity": "epic", "copies": 1, "price": 250}
+    ],
+    "chests": [
+      {"chest": "silver", "gems": 10},
+      {"chest": "gold", "gems": 30},
+      {"chest": "magic", "gems": 80}
+    ]
+  }
+}

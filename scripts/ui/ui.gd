@@ -416,8 +416,8 @@ static func cost_badge(cost: int, size: int = 24) -> Control:
 
 
 ## Полная карточка (награды, магазин, колода).
-static func card_view(id: String, up: bool = false, w: int = 200) -> PanelContainer:
-	var d: Dictionary = Data.cdef(id, up)
+static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) -> PanelContainer:
+	var d: Dictionary = Data.cdef(id, up, lvl)
 	var p := framed(card_frame(id), 10)
 	p.custom_minimum_size = Vector2(w, int(w * 1.45))
 	var v := vbox(6)
@@ -432,10 +432,17 @@ static func card_view(id: String, up: bool = false, w: int = 200) -> PanelContai
 	var art := framed("panel_dark", 4)
 	art.add_child(center(card_icon(id, 6 if w >= 190 else 5)))
 	v.add_child(art)
+	if lvl > 1:
+		var lb := level_badge(lvl, 16)
+		lb.position = Vector2(w - 70, 4)
+		art.add_child(lb)
 	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, Data.RARITY_COLORS.get(d.rarity, DIM)))
 	var txt := label(Data.card_text(id, up), 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(txt)
+	var summary: String = Data.level_summary(id, up, lvl)
+	if summary != "" and d.type != "monster":
+		v.add_child(label("Ур.%d: %s" % [lvl, summary], 16, GREEN))
 	if d.type == "monster":
 		var sh := hbox(16)
 		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED))
@@ -449,13 +456,21 @@ static func card_view(id: String, up: bool = false, w: int = 200) -> PanelContai
 ## Компактная карта для руки: стоимость, картинка, название.
 static func mini_card(c: Dictionary, w: int, h: int, cost_override: int = -1) -> PanelContainer:
 	var up: bool = c.get("up", false) or c.get("temp_up", false)
-	var d: Dictionary = Data.cdef(c.id, up)
+	var lvl := int(c.get("lvl", 1))
+	var d: Dictionary = Data.cdef(c.id, up, lvl)
 	var p := framed(card_frame(c.id), 6)
 	p.custom_minimum_size = Vector2(w, h)
 	var v := vbox(2)
 	p.add_child(v)
 	var cost := cost_override if cost_override >= 0 else int(d.cost)
-	v.add_child(cost_badge(cost))
+	var head := hbox(2)
+	head.add_child(cost_badge(cost))
+	if lvl > 1:
+		var sp := spacer(0)
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(sp)
+		head.add_child(level_badge(lvl, 16))
+	v.add_child(head)
 	var ic := card_icon(c.id, 4)
 	ic.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(ic)
@@ -515,6 +530,46 @@ static func relic_card(id: String, selected: bool, w: int = 212) -> PanelContain
 	return p
 
 
+## Значок уровня карты: «Ур.3».
+static func level_badge(lvl: int, size: int = 16) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", style(Color("#2a6fb8") if lvl < Progress.max_level() else Color("#c47b25"), 0, INK, 2, 3))
+	var l := label("Ур.%d" % lvl, size, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 4)
+	p.add_child(l)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return p
+
+
+## Полоска прогресса с подписью поверх («12/20»).
+static func progress_bar(value: int, total: int, w: int, color: Color, text: String = "", h: int = 26) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(w, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg := ColorRect.new()
+	bg.color = INK
+	full(bg)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.add_child(bg)
+	var fill := ColorRect.new()
+	fill.color = color
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fill.anchor_bottom = 1.0
+	fill.anchor_right = clampf(float(value) / maxf(1.0, float(total)), 0.0, 1.0)
+	fill.offset_left = 2
+	fill.offset_top = 2
+	fill.offset_bottom = -2
+	c.add_child(fill)
+	var l := label(text if text != "" else "%d/%d" % [value, total], 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 4)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	full(l)
+	c.add_child(l)
+	return c
+
+
 # ---------------------------------------------------------------- всплывающие окна
 
 ## Затемнение + окно по центру. Возвращает {overlay, box, root}.
@@ -551,9 +606,9 @@ static func info_popup(parent: Node, heading: String, text: String) -> void:
 		p.box.add_child(label(help, 16, DIM))
 
 
-static func card_popup(parent: Node, id: String, up: bool) -> void:
+static func card_popup(parent: Node, id: String, up: bool, lvl: int = 1) -> void:
 	var p := popup(parent, "")
-	p.box.add_child(center(card_view(id, up, 320)))
+	p.box.add_child(center(card_view(id, up, 320, lvl)))
 	var help: String = Data.keyword_help(Data.card_text(id, up))
 	if help != "":
 		p.box.add_child(label(help, 16, DIM))

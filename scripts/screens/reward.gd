@@ -111,7 +111,7 @@ func _card_choice(body: VBoxContainer, footer: VBoxContainer, cards: Array) -> v
 	var row := UI.hbox(8)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for id in cards:
-		var cv := UI.card_view(id, false, CARD_W)
+		var cv := UI.card_view(id, false, CARD_W, Game.card_level(id))
 		if id == _sel_card:
 			cv.add_theme_stylebox_override("panel", UI.frame("card_selected", 10))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP

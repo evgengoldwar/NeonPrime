@@ -12,7 +12,7 @@ func _ready() -> void:
 	await _wait(2.0)
 	print("TOUCH: экран ", _screen())
 	_shot("menu")
-	await _tap_button("Новый забег")
+	await _tap_button("В БОЙ!")
 	await _wait(1.0)
 	print("TOUCH: экран ", _screen())
 	for hall in 3:

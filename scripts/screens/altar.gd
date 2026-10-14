@@ -30,7 +30,7 @@ func _ready() -> void:
 		# PanelContainer без рамки кладёт детей друг на друга и растягивается по карте.
 		var holder := PanelContainer.new()
 		holder.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-		var cv := UI.card_view(id, false, 212)
+		var cv := UI.card_view(id, false, 212, Game.card_level(id))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
 		cv.gui_input.connect(_card_input.bind(id))
 		holder.add_child(cv)
@@ -46,7 +46,7 @@ func _ready() -> void:
 		var cvb := UI.vbox(2)
 		changes.add_child(cvb)
 		cvb.add_child(UI.label("Улучшение:", 16, UI.DIM))
-		for line in Data.upgrade_changes(id):
+		for line in Data.upgrade_changes(id, Game.card_level(id)):
 			cvb.add_child(UI.label(line, 24, UI.GREEN))
 		v.add_child(changes)
 		var first: Dictionary = copies[0]
@@ -62,7 +62,7 @@ func _ready() -> void:
 
 func _card_input(ev: InputEvent, id: String) -> void:
 	if ev is InputEventMouseButton and ev.pressed:
-		UI.card_popup(self, id, false)
+		UI.card_popup(self, id, false, Game.card_level(id))
 
 
 func _upgrade(c: Dictionary) -> void:

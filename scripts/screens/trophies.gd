@@ -3,6 +3,8 @@ extends Control
 
 const UI := preload("res://scripts/ui/ui.gd")
 
+var embedded := false   # встроен во вкладку главного меню
+
 
 func _ready() -> void:
 	var lay := UI.screen_layout(self, "Трофейный зал")
@@ -42,7 +44,8 @@ func _ready() -> void:
 		v.add_child(UI.label(("[+] " if got else "") + a.name, 22, UI.GOLD if got else UI.TEXT))
 		v.add_child(UI.label(a.text + " → " + a.reward, 18, UI.DIM))
 		body.add_child(p)
-	lay.footer.add_child(UI.button("Назад", func(): Game.main.goto("menu"), 24, 70))
+	if not embedded:
+		lay.footer.add_child(UI.button("Назад", func(): Game.main.goto("menu"), 24, 70))
 
 
 func _grid(cols: int) -> GridContainer:

@@ -21,23 +21,23 @@ static func deck(parent: Node, cards: Array = [], heading: String = "Колод�
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	sc.add_child(grid)
-	var on_tap := func(ev: InputEvent, id: String, up: bool):
+	var on_tap := func(ev: InputEvent, id: String, up: bool, lvl: int):
 		if ev is InputEventMouseButton and ev.pressed:
-			UI.card_popup(parent, id, up)
+			UI.card_popup(parent, id, up, lvl)
 	var refill := func():
 		for ch in grid.get_children():
 			ch.queue_free()
 		var sorted := cards.duplicate()
 		sorted.sort_custom(func(a, b): return Data.cards[a.id].name < Data.cards[b.id].name)
 		for c in sorted:
-			var d: Dictionary = Data.cdef(c.id, c.up)
+			var d: Dictionary = Data.cdef(c.id, c.up, int(c.get("lvl", 1)))
 			if state.type != "" and d.type != state.type:
 				continue
 			if state.cost >= 0 and mini(int(d.cost), 3) != state.cost:
 				continue
-			var cv := UI.card_view(c.id, c.up, 190)
+			var cv := UI.card_view(c.id, c.up, 190, int(c.get("lvl", 1)))
 			cv.mouse_filter = Control.MOUSE_FILTER_STOP
-			cv.gui_input.connect(on_tap.bind(c.id, c.up))
+			cv.gui_input.connect(on_tap.bind(c.id, c.up, int(c.get("lvl", 1))))
 			grid.add_child(cv)
 	var set_type := func(tp: String):
 		state.type = tp
@@ -89,7 +89,7 @@ static func pick_cards(parent: Node, heading: String, n: int, filter: Callable, 
 	for c in Game.run.deck:
 		if filter.is_valid() and not filter.call(c):
 			continue
-		var cv := UI.card_view(c.id, c.up, 190)
+		var cv := UI.card_view(c.id, c.up, 190, int(c.get("lvl", 1)))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
 		cv.gui_input.connect(toggle.bind(c, cv))
 		grid.add_child(cv)

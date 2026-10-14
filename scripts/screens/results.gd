@@ -27,14 +27,41 @@ func _ready() -> void:
 		v.add_child(UI.label("Осталось в Казне: %d" % int(r.get("treasury", 0)), 22, UI.GOLD))
 	v.add_child(UI.stat("soul", "+%d Душ" % int(r.get("souls", 0)), UI.SOUL, 32))
 	body.add_child(p)
+	body.add_child(_rewards(r, won))
 	var unlocked: Array = r.get("unlocked", [])
 	if not unlocked.is_empty():
 		body.add_child(UI.label("Открыто:", 24, UI.GOLD))
 		for u in unlocked:
 			body.add_child(UI.label(u, 22, UI.GREEN))
 	body.add_child(UI.label("Всего Душ: %d. Потратьте их в Замке." % int(Game.meta.souls), 20, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
-	lay.footer.add_child(UI.button("В меню", func(): Game.main.goto("menu"), 26, 76))
-	if not r.get("daily", false):
-		var again := UI.button("Ещё раз", func(): Game.main.goto("master_select"), 26, 76)
-		UI.tint_button(again, UI.ACCENT)
-		lay.footer.add_child(again)
+	var ok := UI.button("В меню", func(): Game.main.goto("menu"), 28, 84)
+	UI.tint_button(ok, UI.GOLD)
+	lay.footer.add_child(ok)
+
+
+## Награды для коллекции: золото (остаток Казны), кристаллы и сундук.
+func _rewards(r: Dictionary, won: bool) -> Control:
+	var p := UI.framed("popup", 14)
+	var v := UI.vbox(8)
+	p.add_child(v)
+	v.add_child(UI.label("Награда", 28, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var h := UI.hbox(16)
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	var gold := int(r.get("reward_gold", 0))
+	h.add_child(UI.stat("coin", "+%d" % gold, UI.GOLD, 32))
+	h.add_child(UI.stat("gem", "+%d" % int(r.get("reward_gems", 0)), UI.GREEN, 32))
+	v.add_child(h)
+	if won:
+		v.add_child(UI.label("Всё, что осталось в Казне, стало золотом для прокачки карт.", 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		v.add_child(UI.label("Казна разграблена — золота нет. Но сундук твой.", 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	var chest: String = r.get("reward_chest", "")
+	if chest != "":
+		var ch := UI.hbox(12)
+		ch.alignment = BoxContainer.ALIGNMENT_CENTER
+		ch.add_child(UI.icon("chests/" + chest, 6))
+		var slot := int(r.get("reward_slot", -1))
+		var txt := Progress.chest_name(chest) + ("\nждёт в слоте %d" % (slot + 1) if slot >= 0 else "\nВсе слоты заняты — сундук потерян!")
+		ch.add_child(UI.label(txt, 22, UI.TEXT if slot >= 0 else UI.RED, HORIZONTAL_ALIGNMENT_LEFT, false))
+		v.add_child(ch)
+	return p

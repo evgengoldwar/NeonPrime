@@ -101,6 +101,7 @@ func save_meta() -> void:
 
 func reset_progress() -> void:
 	meta = default_meta()
+	Progress.ensure()
 	save_meta()
 	clear_run()
 
@@ -134,6 +135,7 @@ func unlock_achievement(id: String) -> void:
 	if id in meta.achievements:
 		return
 	meta.achievements.append(id)
+	meta["gems"] = int(meta.get("gems", 0)) + int(Data.prog.gems.achievement)
 	save_meta()
 	for a in Data.achievements:
 		if a.id == id and main:
@@ -149,6 +151,10 @@ func record_kill(h: Dictionary) -> void:
 	if int(meta.kills) >= 100:
 		unlock_achievement("hundred_kills")
 	run["kills_count"] = int(run.get("kills_count", 0)) + 1
+	if h.get("boss", false):
+		run["bosses"] = int(run.get("bosses", 0)) + 1
+	if h.id == "chosen":
+		run["chosen_killed"] = true
 	if not h.get("boss", false):
 		var tr: String = Data.hero_def(h.id).get("trait", "")
 		if tr != "" and not tr in run.killed_traits:
@@ -183,12 +189,22 @@ func new_run(master_id: String, notoriety: int, opts: Dictionary = {}) -> void:
 		"stolen": [], "best_combo": 0, "kills_count": 0, "path": [], "battles_done": 0,
 		"mika_stole": false, "screen": "location", "unlocked_now": [], "chosen_done": false,
 	}
-	var treasury: int = m.treasury + 3 * upgrade_level("deep_cellars")
+	var treasury: int = m.treasury + 3 * upgrade_level("deep_cellars") + Progress.treasury_bonus()
 	if notoriety >= 4:
 		treasury -= 5
 	run.treasury = treasury
-	for id in m.deck:
-		run.deck.append({"uid": next_uid(), "id": id, "up": false})
+	# Стартовая колода забега: боевая колода игрока + 2 копии фирменной карты Хозяина.
+	var start_ids: Array = Progress.deck().duplicate()
+	if opts.get("daily", false):
+		start_ids = m.deck.duplicate()
+	else:
+		var sig: String = Data.prog.signature.get(master_id, "")
+		if sig != "":
+			start_ids.append(sig)
+			start_ids.append(sig)
+	for id in start_ids:
+		var lvl := card_level(id)
+		run.deck.append({"uid": next_uid(), "id": id, "up": mastery_up(id, lvl), "lvl": lvl})
 	if upgrade_level("dark_forge") > 0:
 		var c = rpick(upgradable_cards())
 		if c != null:
@@ -265,7 +281,32 @@ func add_relic(id: String) -> void:
 
 
 func add_card(id: String, up: bool = false) -> void:
-	run.deck.append({"uid": next_uid(), "id": id, "up": up})
+	var lvl := card_level(id)
+	run.deck.append({"uid": next_uid(), "id": id, "up": up or mastery_up(id, lvl), "lvl": lvl})
+
+
+## Мастерство: с 5-го уровня карта приходит в забег сразу улучшенной «+».
+func mastery_up(id: String, lvl: int) -> bool:
+	return lvl >= int(Data.prog.get("mastery_level", 5)) and Data.cards.get(id, {}).has("up")
+
+
+## Уровень карты в забеге: уровень коллекции (не ниже 1) + 1 для карт темы Хозяина.
+## В ежедневном подземелье у всех одинаковые условия — все карты 1-го уровня.
+func card_level(id: String) -> int:
+	if run.get("daily", false):
+		return 1
+	return card_level_for(id, run.get("master", ""))
+
+
+## Уровень карты в забеге за Хозяина: уровень коллекции +1 за карты его темы.
+func card_level_for(id: String, master_id: String) -> int:
+	if not Data.cards.has(id):
+		return 1
+	var lvl := maxi(1, Progress.level_of(id))
+	var aff: String = Data.prog.affinity.get(master_id, {}).get("set", "")
+	if aff != "" and Data.cards[id].set == aff:
+		lvl += 1
+	return lvl
 
 
 func remove_deck_card(uid: int) -> void:
@@ -707,7 +748,9 @@ func card_pool(include_legendary: bool) -> Array:
 		elif s.begins_with("loc_"):
 			ok = s == "loc_" + str(run.location)
 		elif s != "special":
-			ok = s in meta.wings or run.get("daily", false)
+			ok = Progress.owned(c.id) or run.get("daily", false)
+		if s == "base" and not run.get("daily", false):
+			ok = Progress.owned(c.id)
 		if ok and (include_legendary or c.rarity != "legendary"):
 			out.append(c.id)
 	return out
@@ -727,6 +770,15 @@ func roll_cards(count: int, weights: Dictionary) -> Array:
 		if cand.is_empty():
 			continue
 		out.append(rpick(cand))
+	# Маленькая коллекция: нужных редкостей может не быть — добираем любыми.
+	var rest := []
+	for id in pool:
+		if not id in out:
+			rest.append(id)
+	while out.size() < count and not rest.is_empty():
+		var id = rpick(rest)
+		rest.erase(id)
+		out.append(id)
 	return out
 
 
@@ -891,6 +943,11 @@ func end_run(won: bool) -> void:
 		"kills": run.kills_count, "unlocked": unlocked, "master": run.master, "treasury": run.treasury,
 		"daily": run.get("daily", false),
 	}
+	var rw := Progress.run_rewards(won, run)
+	pending["reward_gold"] = rw.gold
+	pending["reward_gems"] = rw.gems
+	pending["reward_chest"] = rw.chest
+	pending["reward_slot"] = rw.slot
 	var res := pending
 	clear_run()
 	pending = res

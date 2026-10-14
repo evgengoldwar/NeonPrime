@@ -3,7 +3,7 @@ extends Node
 ## Запуск: godot --headless --path . res://tools/smoke_test.tscn
 ## Ошибки скриптов Godot печатает в stderr; в конце — сводка.
 
-const SCREENS := ["loading", "menu", "master_select", "castle", "trophies", "daily", "settings"]
+const SCREENS := ["loading", "menu", "master_select", "castle", "trophies", "daily", "settings", "chest_open"]
 
 var main
 var steps := 0
@@ -20,6 +20,7 @@ func _ready() -> void:
 		main.goto(s)
 		await _frames(2)
 	print("SMOKE: экраны меню открылись")
+	await _meta_test()
 	# Обучение
 	Game.start_tutorial()
 	main.goto("battle")
@@ -51,6 +52,7 @@ func _ready() -> void:
 	main.goto(Game.run.screen)
 	await _drive(1500)
 	print("SMOKE: ежедневное подземелье завершено")
+	print("SMOKE: сундуки после забегов: ", Game.meta.chests, " золото ", Game.meta.gold, " кристаллы ", Game.meta.gems)
 	print("SMOKE ИТОГ: забегов %d, боёв %d, шагов %d" % [runs_done + 1, battles, steps])
 	get_tree().quit()
 
@@ -178,3 +180,78 @@ func _battle(scr) -> void:
 		await _frames(1)
 	Game.battle_finished()
 	await _frames(1)
+
+
+## Коллекция: вкладки меню, сундуки, открытие, прокачка, замена карты в колоде.
+func _meta_test() -> void:
+	main.goto("menu")
+	await _frames(2)
+	for t in ["shop", "deck", "castle", "trophies", "home"]:
+		main.screen._show(t)
+		await _frames(2)
+	assert(Progress.chest_state(0) == "ready", "стартовый сундук должен быть готов")
+	main.screen._slot_tap(0)
+	await _frames(2)
+	assert(_screen() == "chest_open")
+	for i in 20:
+		if _screen() != "chest_open":
+			break
+		main.screen._next()
+		await _frames(1)
+	assert(_screen() == "menu", "после открытия сундука — меню")
+	Game.meta.gold = 5000
+	Game.meta.gems = 500
+	for k in Data.prog.chest_order:
+		main.goto("menu")
+		await _frames(1)
+		main.screen._open(Progress.buy_chest(k, 0))
+		await _frames(2)
+		main.screen._summary()
+		await _frames(1)
+	main.goto("menu")
+	await _frames(2)
+	var up := 0
+	for id in Game.meta.collection.keys():
+		while Progress.can_upgrade(id):
+			Progress.upgrade(id)
+			up += 1
+	main.screen._show("deck")
+	await _frames(2)
+	var extra := ""
+	for id in Game.meta.collection.keys():
+		if not Progress.in_deck(id):
+			extra = id
+	if extra != "":
+		main.screen.card_detail(extra)
+		main.screen._swap_id = extra
+		main.screen._show("deck")
+		main.screen._coll_input(_click(), Progress.deck()[0], 0)
+		assert(Progress.deck()[0] == extra, "замена карты в колоде")
+	assert(Progress.grant_chest("silver") >= 0)
+	var slot := -1
+	for i in Game.meta.chests.size():
+		if Progress.chest_state(i) == "locked":
+			slot = i
+	Progress.start_unlock(slot)
+	main.screen._show("home")
+	await _frames(2)
+	main.screen._tick()
+	main.screen._shop()
+	Progress.buy_offer(0)
+	Progress.claim_gift()
+	print("SMOKE: коллекция %d карт, улучшений %d, уровень игрока %d, колода %s" % [Game.meta.collection.size(), up, int(Game.meta.plevel), str(Progress.deck())])
+	# Уровни должны попадать в забег
+	Game.clear_run()
+	Game.new_run("dark_lord", 0)
+	var lv := []
+	for c in Game.run.deck:
+		lv.append("%s@%d" % [c.id, int(c.lvl)])
+	print("SMOKE: стартовая колода забега ", lv)
+	Game.clear_run()
+
+
+func _click() -> InputEventMouseButton:
+	var e := InputEventMouseButton.new()
+	e.pressed = true
+	e.button_index = MOUSE_BUTTON_LEFT
+	return e

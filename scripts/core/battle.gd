@@ -62,13 +62,13 @@ func setup(hero_list: Array, deck: Array, opts: Dictionary = {}) -> void:
 	is_boss = node_type == "boss"
 	draw_pile = []
 	for c in deck:
-		draw_pile.append({"uid": c.uid, "id": c.id, "up": c.up})
+		draw_pile.append({"uid": c.uid, "id": c.id, "up": c.up, "lvl": int(c.get("lvl", 1))})
 	Game.shuffle(draw_pile)
 	if Game.has_relic("dark_throne"):
 		_gold(-2, "Тёмный трон")
 	if Game.run.get("master", "") == "dragoness" and not tutorial:
 		var id := "dragon" if Game.run.get("dragon_hatched", false) else "dragon_egg"
-		var b := _make_board({"uid": -1, "id": id, "up": Game.run.get("dragon_up", false)}, 0)
+		var b := _make_board({"uid": -1, "id": id, "up": Game.run.get("dragon_up", false), "lvl": Game.card_level(id)}, 0)
 		b["locked"] = true
 		b["innate"] = true
 		cells[5] = b
@@ -188,7 +188,12 @@ func card_up(c) -> bool:
 
 
 func def_of(c) -> Dictionary:
-	return Data.cdef(c.id, card_up(c))
+	return Data.cdef(c.id, card_up(c), card_lvl(c))
+
+
+## Уровень карты в бою: уровень коллекции + бонус темы Хозяина.
+func card_lvl(c) -> int:
+	return int(c.get("lvl", 1))
 
 
 func card_cost(c) -> int:
@@ -314,9 +319,10 @@ func _spell_action(a: Dictionary) -> void:
 
 
 func _make_board(c: Dictionary, paid: int) -> Dictionary:
-	var d: Dictionary = Data.cdef(c.id, card_up(c))
+	var d: Dictionary = def_of(c)
 	return {
 		"uid": c.uid, "id": c.id, "up": c.get("up", false), "temp_up": c.get("temp_up", false),
+		"lvl": card_lvl(c),
 		"paid": paid, "locked": false, "once_used": false, "once_actions": {},
 		"frozen": false, "disabled": false, "freeze_ticks": 0, "hall_atk": 0,
 		"hp": int(d.get("hp", 0)), "max_hp": int(d.get("hp", 0)), "buffed": false,
@@ -325,7 +331,7 @@ func _make_board(c: Dictionary, paid: int) -> Dictionary:
 
 
 func _strip(c: Dictionary) -> Dictionary:
-	return {"uid": c.uid, "id": c.id, "up": c.get("up", false)}
+	return {"uid": c.uid, "id": c.id, "up": c.get("up", false), "lvl": card_lvl(c)}
 
 
 # ---------------------------------------------------------------- запуск зала
@@ -411,7 +417,7 @@ func _before_hall(h: Dictionary) -> void:
 			var best := -1
 			for i in corridor_len:
 				var c = cells[i]
-				if c != null and not c.disabled and (best < 0 or Data.cdef(c.id, card_up(c)).cost > Data.cdef(cells[best].id, card_up(cells[best])).cost):
+				if c != null and not c.disabled and (best < 0 or def_of(c).cost > def_of(cells[best]).cost):
 					best = i
 			if best >= 0:
 				cells[best].disabled = true
@@ -952,7 +958,7 @@ func _grow_eggs() -> void:
 		if Game.run.egg_growth >= need:
 			Game.run["egg_growth"] = 0
 			var up: bool = card_up(c)
-			var dragon := _make_board({"uid": c.uid, "id": "dragon", "up": up}, 0)
+			var dragon := _make_board({"uid": c.uid, "id": "dragon", "up": up, "lvl": card_lvl(c)}, 0)
 			dragon["locked"] = true
 			dragon["innate"] = c.get("innate", false)
 			cells[i] = dragon

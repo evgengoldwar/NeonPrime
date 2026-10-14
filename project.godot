@@ -24,6 +24,7 @@ boot_splash/bg_color=Color(0.086, 0.067, 0.114, 1)
 CrashLog="*res://scripts/core/crash_log.gd"
 Data="*res://scripts/core/data.gd"
 Game="*res://scripts/core/game.gd"
+Progress="*res://scripts/core/progress.gd"
 Sfx="*res://scripts/core/sfx.gd"
 
 [debug]

@@ -1385,6 +1385,120 @@ ICONS = {
 }
 
 
+# ============================================================ сундуки и меню
+
+CHEST_CLOSED = [
+    "...kkkkkkkkkk...",
+    "..k4411111111k..",
+    ".k111111111111k.",
+    "k22222222222222k",
+    "k11111111111111k",
+    "kkkkkkyyyykkkkkk",
+    "k2222kykkyk2222k",
+    "k1111kyyyyk1111k",
+    "k11111kkkk11111k",
+    "k11111111111111k",
+    "k22222222222222k",
+    "k33333333333333k",
+    "kkkkkkkkkkkkkkkk",
+]
+CHEST_OPEN = [
+    ".kkkkkkkkkkkkkk.",
+    ".k441111111111k.",
+    ".k222222222222k.",
+    "kkkkkkkkkkkkkkkk",
+    "kKKyKwKKyKKwKyKk",
+    "kyyyyyyyyyyyyyyk",
+    "k22222222222222k",
+    "k11111111111111k",
+    "k11111kyyk11111k",
+    "k11111111111111k",
+    "k22222222222222k",
+    "k33333333333333k",
+    "kkkkkkkkkkkkkkkk",
+]
+CHESTS = {
+    "wood": {"1": "n", "2": "G", "3": "N", "4": "t"},
+    "silver": {"1": "g", "2": "G", "3": "D", "4": "w"},
+    "gold": {"1": "y", "2": "n", "3": "Y", "4": "w"},
+    "magic": {"1": "p", "2": "c", "3": "P", "4": "m"},
+    "legendary": {"1": "o", "2": "y", "3": "R", "4": "w"},
+}
+
+MENU_ICONS = {
+    "gem": [
+        "..kkkk..",
+        ".kwllLk.",
+        "kwllllLk",
+        "kllllLLk",
+        ".kllLLk.",
+        "..klLk..",
+        "...kk...",
+        "........",
+    ],
+    "tab_deck": [
+        "...kkkkk",
+        "...krrrk",
+        "kkkkkrrk",
+        "kbbbkrrk",
+        "kbwbkrrk",
+        "kbbbkkkk",
+        "kbbbk...",
+        "kkkkk...",
+    ],
+    "tab_castle": [
+        "k.k..k.k",
+        "kkk..kkk",
+        "kGk..kGk",
+        "kGkkkkGk",
+        "kGGGGGGk",
+        "kGGkkGGk",
+        "kGkNNkGk",
+        "kkkkkkkk",
+    ],
+    "tab_trophy": [
+        "kkkkkkkk",
+        "kywyyyYk",
+        ".kwyyYk.",
+        ".kyyyYk.",
+        "..kyYk..",
+        "...kk...",
+        "..kYYk..",
+        ".kkkkkk.",
+    ],
+    "tab_shop": [
+        "...kk...",
+        "..kNNk..",
+        "...kk...",
+        ".knnnnk.",
+        "knnyynNk",
+        "knnyynNk",
+        "knnnnnNk",
+        ".kkkkkk.",
+    ],
+    "tab_battle": [
+        "k......k",
+        "kwk..kwk",
+        ".kwkkwk.",
+        "..kwwk..",
+        "..kwwk..",
+        ".kNkkNk.",
+        "kNk..kNk",
+        "kk....kk",
+    ],
+    "gear": [
+        "...kk...",
+        ".kkGGkk.",
+        ".kGGGGk.",
+        "kGGkkGGk",
+        "kGGkkGGk",
+        ".kGGGGk.",
+        ".kkGGkk.",
+        "...kk...",
+    ],
+}
+
+
 # ============================================================ рамки (9-patch, ×2)
 
 def frame(fill, border="k", light=None, shadow=None, size=12, b=3):
@@ -1522,6 +1636,11 @@ def main():
         save(render(rows, name=name), "nodes", name + ".png")
     for name, rows in ICONS.items():
         save(render(rows, name=name), "icons", name + ".png")
+    for name, rows in MENU_ICONS.items():
+        save(render(rows, name=name), "icons", name + ".png")
+    for name, rec in CHESTS.items():
+        save(render(CHEST_CLOSED, rec, "chest_" + name), "chests", name + ".png")
+        save(render(CHEST_OPEN, rec, "chest_open_" + name), "chests", name + "_open.png")
     frames()
     tiles()
     if ERRORS:
