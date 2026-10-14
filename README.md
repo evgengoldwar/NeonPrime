@@ -102,7 +102,18 @@ tests/                     автотест (бот) и генератор ск�
 ## Запуск и сборка
 
 1. Открыть папку в Godot 4.7 и нажать **F5**.
-2. Для Android: *Project → Install Android Build Template* / *Editor → Manage Export Templates*,
+2. **APK для Android без Android SDK:**
+
+   ```
+   tools/build_android.sh /путь/к/Godot_v4.7-stable_linux.x86_64
+   ```
+
+   Нужны установленные шаблоны экспорта Godot 4.7 и Java 17+. Результат —
+   `build/NeonPrime.apk` (Android 7.0+, arm64 и armv7), подписанный отладочным
+   ключом `tools/neonprime-debug.p12` (пароль `neonprime`). Этим же ключом
+   подписываются следующие сборки, поэтому они ставятся поверх старой версии.
+   Для Google Play нужен отдельный настоящий ключ.
+3. Обычный способ через редактор: *Editor → Manage Export Templates*, указать Android SDK,
    затем *Project → Export → Android*.
 
 Автотест без окна:
