@@ -44,8 +44,8 @@ func goto(name: String) -> void:
 
 
 func toast(text: String) -> void:
-	var p := UI.panel(Color(0.1, 0.06, 0.16, 0.92), 12, 12, UI.ACCENT, 2)
-	p.add_child(UI.label(text, 22, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	var p := UI.framed("popup", 12)
+	p.add_child(UI.label(text, 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.add_child(p)
 	var tw := p.create_tween()

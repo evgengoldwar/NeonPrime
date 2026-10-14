@@ -1,27 +1,77 @@
 extends RefCounted
-## Фабрика элементов интерфейса. Все экраны собираются кодом из этих кирпичиков.
+## Фабрика элементов интерфейса в пиксельном стиле.
+## Рамки и кнопки — 9-patch текстуры из assets/sprites/ui, шрифт — Tiny5 (сетка 8 px).
 
-const BG := Color("#120e1a")
-const PANEL := Color("#211a2c")
-const PANEL2 := Color("#2e2440")
-const PANEL3 := Color("#3c3054")
-const ACCENT := Color("#b84ae0")
-const GOLD := Color("#f2c443")
-const SOUL := Color("#7fd8ff")
-const TEXT := Color("#ece4f4")
-const DIM := Color("#9a8fab")
-const RED := Color("#e05656")
-const GREEN := Color("#5cc87a")
-const DARK := Color("#9b6bff")
+const BG := Color("#16111d")
+const PANEL := Color("#241c30")
+const PANEL2 := Color("#30264a")
+const PANEL3 := Color("#45385a")
+const ACCENT := Color("#c159c9")
+const GOLD := Color("#feae34")
+const SOUL := Color("#2ce8f5")
+const TEXT := Color("#f4f0ff")
+const DIM := Color("#8b7fa3")
+const RED := Color("#e43b44")
+const GREEN := Color("#63c74d")
+const DARK := Color("#9d6bff")
+const INK := Color("#18141e")
+
+const FONT_PATH := "res://assets/fonts/Tiny5-Regular.ttf"
+const SPR := "res://assets/sprites/"
+const FRAME_MARGIN := 6
 
 
-static func style(bg: Color, radius: int = 14, border: Color = Color.TRANSPARENT, bw: int = 0, pad: int = 10) -> StyleBoxFlat:
+# ---------------------------------------------------------------- ресурсы
+
+static func tex(path: String) -> Texture2D:
+	if not path.begins_with("res://"):
+		path = SPR + path + ".png"
+	if ResourceLoader.exists(path):
+		return load(path)
+	return null
+
+
+static func font() -> Font:
+	var f = load(FONT_PATH)
+	if f is FontFile:
+		f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+		f.hinting = TextServer.HINTING_NONE
+		f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+	return f
+
+
+## Tiny5 нарисован на сетке 8 px: только кратные 8 размеры остаются чёткими.
+static func fs(size: int) -> int:
+	return maxi(16, int(round(size / 8.0)) * 8)
+
+
+# ---------------------------------------------------------------- стили
+
+static func style(bg: Color, _radius: int = 0, border: Color = Color.TRANSPARENT, bw: int = 0, pad: int = 10) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
-	s.set_corner_radius_all(radius)
+	s.anti_aliasing = false
 	if bw > 0:
 		s.border_color = border
-		s.set_border_width_all(bw)
+		s.set_border_width_all(2 if bw <= 2 else 4)
+	s.content_margin_left = pad
+	s.content_margin_right = pad
+	s.content_margin_top = pad
+	s.content_margin_bottom = pad
+	return s
+
+
+## 9-patch из assets/sprites/ui/<name>.png
+static func frame(name: String, pad: int = 12) -> StyleBox:
+	var t := tex("ui/" + name)
+	if t == null:
+		return style(PANEL, 0, INK, 2, pad)
+	var s := StyleBoxTexture.new()
+	s.texture = t
+	s.texture_margin_left = FRAME_MARGIN
+	s.texture_margin_right = FRAME_MARGIN
+	s.texture_margin_top = FRAME_MARGIN
+	s.texture_margin_bottom = FRAME_MARGIN
 	s.content_margin_left = pad
 	s.content_margin_right = pad
 	s.content_margin_top = pad
@@ -31,20 +81,38 @@ static func style(bg: Color, radius: int = 14, border: Color = Color.TRANSPARENT
 
 static func make_theme() -> Theme:
 	var t := Theme.new()
+	t.default_font = font()
 	t.default_font_size = 24
 	t.set_color("font_color", "Label", TEXT)
-	t.set_color("font_color", "Button", TEXT)
-	t.set_color("font_hover_color", "Button", Color.WHITE)
-	t.set_color("font_pressed_color", "Button", Color.WHITE)
-	t.set_color("font_disabled_color", "Button", Color(0.55, 0.5, 0.6))
-	t.set_stylebox("normal", "Button", style(PANEL2, 14, ACCENT.darkened(0.4), 2, 12))
-	t.set_stylebox("hover", "Button", style(PANEL3, 14, ACCENT, 2, 12))
-	t.set_stylebox("pressed", "Button", style(ACCENT.darkened(0.3), 14, ACCENT, 2, 12))
-	t.set_stylebox("disabled", "Button", style(PANEL.darkened(0.2), 14, Color(0.3, 0.3, 0.3), 2, 12))
+	for cls in ["Button", "CheckButton", "OptionButton"]:
+		t.set_color("font_color", cls, TEXT)
+		t.set_color("font_hover_color", cls, Color.WHITE)
+		t.set_color("font_pressed_color", cls, GOLD)
+		t.set_color("font_focus_color", cls, TEXT)
+		t.set_color("font_disabled_color", cls, Color("#5e5470"))
+		t.set_color("font_outline_color", cls, INK)
+		t.set_constant("outline_size", cls, 4)
+	t.set_stylebox("normal", "Button", frame("btn"))
+	t.set_stylebox("hover", "Button", frame("btn_hover"))
+	t.set_stylebox("pressed", "Button", frame("btn_pressed"))
+	t.set_stylebox("disabled", "Button", frame("btn_disabled"))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	t.set_stylebox("panel", "PanelContainer", style(PANEL))
-	t.set_stylebox("background", "ProgressBar", style(Color("#0a0810"), 8, Color.TRANSPARENT, 0, 0))
-	t.set_stylebox("fill", "ProgressBar", style(RED, 8, Color.TRANSPARENT, 0, 0))
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		t.set_stylebox(st, "CheckButton", StyleBoxEmpty.new())
+	t.set_stylebox("normal", "OptionButton", frame("btn"))
+	t.set_stylebox("hover", "OptionButton", frame("btn_hover"))
+	t.set_stylebox("pressed", "OptionButton", frame("btn_pressed"))
+	t.set_stylebox("focus", "OptionButton", StyleBoxEmpty.new())
+	t.set_stylebox("panel", "PanelContainer", frame("panel"))
+	t.set_stylebox("panel", "PopupMenu", frame("panel"))
+	t.set_stylebox("background", "ProgressBar", frame("bar_bg", 0))
+	t.set_stylebox("fill", "ProgressBar", frame("bar_hp", 0))
+	t.set_stylebox("panel", "TooltipPanel", frame("panel", 8))
+	t.set_color("font_color", "TooltipLabel", TEXT)
+	t.set_stylebox("scroll", "VScrollBar", style(Color(0, 0, 0, 0.3), 0, Color.TRANSPARENT, 0, 2))
+	t.set_stylebox("grabber", "VScrollBar", style(PANEL3, 0, Color.TRANSPARENT, 0, 4))
+	t.set_stylebox("grabber_highlight", "VScrollBar", style(DIM, 0, Color.TRANSPARENT, 0, 4))
+	t.set_stylebox("grabber_pressed", "VScrollBar", style(GOLD, 0, Color.TRANSPARENT, 0, 4))
 	return t
 
 
@@ -57,11 +125,16 @@ static func full(c: Control) -> Control:
 	return c
 
 
+# ---------------------------------------------------------------- текст
+
 static func label(text: String, size: int = 24, color: Color = TEXT, align: int = HORIZONTAL_ALIGNMENT_LEFT, wrap: bool = true) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_font_size_override("font_size", fs(size))
 	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_offset_y", 2)
 	l.horizontal_alignment = align
 	if wrap:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -71,30 +144,120 @@ static func label(text: String, size: int = 24, color: Color = TEXT, align: int 
 
 static func title(text: String, size: int = 40) -> Label:
 	var l := label(text, size, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	l.add_theme_color_override("font_outline_color", Color("#2a0a3a"))
-	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 8)
+	l.add_theme_color_override("font_shadow_color", Color("#5e3810"))
+	l.add_theme_constant_override("shadow_offset_y", 4)
 	return l
 
+
+# ---------------------------------------------------------------- картинки
+
+## Пиксельная картинка, увеличенная в целое число раз.
+static func icon(path: String, scale: int = 4) -> TextureRect:
+	var r := TextureRect.new()
+	var t := tex(path)
+	r.texture = t
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var sz := Vector2(12, 12) if t == null else t.get_size()
+	r.custom_minimum_size = sz * scale
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
+
+
+static func card_icon(id: String, scale: int = 5) -> TextureRect:
+	return icon("cards/" + id, scale)
+
+
+static func hero_icon(id: String, scale: int = 4) -> TextureRect:
+	var path := "heroes/" + id
+	if tex(path) == null:
+		path = "heroes/warrior"
+	return icon(path, scale)
+
+
+## Значок с числом: [♥ 12]
+static func stat(icon_name: String, value: String, color: Color = TEXT, size: int = 24) -> HBoxContainer:
+	var h := hbox(4)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var i := icon("icons/" + icon_name, 3)
+	i.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(i)
+	var l := label(value, size, color, HORIZONTAL_ALIGNMENT_LEFT, false)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(l)
+	return h
+
+
+## Плиточный фон (пол или стена локации).
+static func tiled(path: String) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = tex(path)
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	r.stretch_mode = TextureRect.STRETCH_TILE
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	full(r)
+	return r
+
+
+## Затемнённый фон экрана с плиткой и виньеткой.
+static func backdrop(root: Control, tile: String = "tiles/floor_menu", dim: float = 0.55) -> void:
+	var t := tiled(tile)
+	root.add_child(t)
+	var shade := ColorRect.new()
+	shade.color = Color(BG, dim)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	full(shade)
+	root.add_child(shade)
+
+
+# ---------------------------------------------------------------- кнопки
 
 static func button(text: String, cb: Callable, size: int = 26, min_h: int = 76) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override("font_size", size)
-	b.custom_minimum_size = Vector2(0, min_h)
+	b.add_theme_font_size_override("font_size", fs(size))
+	b.custom_minimum_size = Vector2(0, maxi(56, min_h))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if cb.is_valid():
 		b.pressed.connect(cb)
 	b.pressed.connect(func(): Sfx.play("click"))
 	return b
 
 
+## Цветная кнопка: красная, зелёная, золотая, фиолетовая или синяя рамка.
 static func tint_button(b: Button, color: Color) -> Button:
-	b.add_theme_stylebox_override("normal", style(color.darkened(0.45), 14, color, 2, 12))
-	b.add_theme_stylebox_override("hover", style(color.darkened(0.3), 14, color.lightened(0.2), 2, 12))
-	b.add_theme_stylebox_override("pressed", style(color.darkened(0.15), 14, Color.WHITE, 2, 12))
+	var kind := "btn_purple"
+	var best := 99.0
+	for pair in [[RED, "btn_red"], [GREEN, "btn_green"], [GOLD, "btn_gold"], [ACCENT, "btn_purple"], [SOUL, "btn_blue"]]:
+		var c: Color = pair[0]
+		var dist := absf(c.r - color.r) + absf(c.g - color.g) + absf(c.b - color.b)
+		if dist < best:
+			best = dist
+			kind = pair[1]
+	b.add_theme_stylebox_override("normal", frame(kind))
+	b.add_theme_stylebox_override("hover", frame(kind + "_hover"))
+	b.add_theme_stylebox_override("pressed", frame("btn_pressed"))
 	return b
 
+
+## Кнопка-картинка (без текста).
+static func icon_button(path: String, cb: Callable, scale: int = 3, min_size: int = 64) -> Button:
+	var b := button("", cb, 24, min_size)
+	b.custom_minimum_size = Vector2(min_size, min_size)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var i := icon(path, scale)
+	full(i)
+	b.add_child(i)
+	return b
+
+
+# ---------------------------------------------------------------- контейнеры
 
 static func vbox(sep: int = 12) -> VBoxContainer:
 	var v := VBoxContainer.new()
@@ -108,9 +271,25 @@ static func hbox(sep: int = 12) -> HBoxContainer:
 	return h
 
 
-static func panel(bg: Color = PANEL, radius: int = 14, pad: int = 14, border: Color = Color.TRANSPARENT, bw: int = 0) -> PanelContainer:
+## Панель. Стандартные цвета дают текстурную рамку, остальные — плоскую пиксельную.
+static func panel(bg: Color = PANEL, _radius: int = 0, pad: int = 14, border: Color = Color.TRANSPARENT, bw: int = 0) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", style(bg, radius, border, bw, pad))
+	var sb: StyleBox
+	if border == Color.TRANSPARENT and bg == PANEL:
+		sb = frame("panel", pad)
+	elif border == Color.TRANSPARENT and bg == PANEL2:
+		sb = frame("panel_light", pad)
+	elif border == Color.TRANSPARENT:
+		sb = style(bg, 0, INK, 2, pad)
+	else:
+		sb = style(bg, 0, border, bw, pad)
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
+
+static func framed(name: String, pad: int = 14) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", frame(name, pad))
 	return p
 
 
@@ -137,6 +316,12 @@ static func scroll() -> ScrollContainer:
 	return s
 
 
+static func center(c: Control) -> CenterContainer:
+	var cc := CenterContainer.new()
+	cc.add_child(c)
+	return cc
+
+
 static func ignore_mouse(n: Node) -> void:
 	for ch in n.get_children():
 		if ch is Control:
@@ -145,14 +330,15 @@ static func ignore_mouse(n: Node) -> void:
 
 
 ## Стандартная раскладка экрана: заголовок, прокручиваемое тело, нижняя панель.
-static func screen_layout(root: Control, heading: String) -> Dictionary:
+static func screen_layout(root: Control, heading: String, tile: String = "tiles/floor_menu") -> Dictionary:
+	backdrop(root, tile)
 	var m := margin(16)
 	full(m)
 	root.add_child(m)
 	var v := vbox(14)
 	m.add_child(v)
 	if heading != "":
-		v.add_child(title(heading, 38))
+		v.add_child(title(heading, 40))
 	var sc := scroll()
 	v.add_child(sc)
 	var body := vbox(12)
@@ -164,14 +350,15 @@ static func screen_layout(root: Control, heading: String) -> Dictionary:
 
 
 static func top_bar(show_floor: bool = true) -> PanelContainer:
-	var p := panel(PANEL, 12, 10)
-	var h := hbox(18)
+	var p := framed("panel_dark", 10)
+	var h := hbox(24)
 	p.add_child(h)
-	h.add_child(label("Казна: %d" % int(Game.run.get("treasury", 0)), 24, GOLD, HORIZONTAL_ALIGNMENT_LEFT, false))
-	h.add_child(label("Души: %d" % int(Game.run.get("souls", 0)), 24, SOUL, HORIZONTAL_ALIGNMENT_LEFT, false))
+	h.add_child(stat("coin", str(int(Game.run.get("treasury", 0))), GOLD))
+	h.add_child(stat("soul", str(int(Game.run.get("souls", 0))), SOUL))
 	if show_floor:
-		var f := label("Этаж %d/%d" % [int(Game.run.get("floor", 1)), int(Game.run.get("floors_total", 3))], 24, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, false)
+		var f := label("ЭТАЖ %d/%d" % [int(Game.run.get("floor", 1)), int(Game.run.get("floors_total", 3))], 24, TEXT, HORIZONTAL_ALIGNMENT_RIGHT, false)
 		f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		f.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		h.add_child(f)
 	return p
 
@@ -182,108 +369,114 @@ static func card_color(id: String) -> Color:
 	return Data.TYPE_COLORS.get(Data.cards.get(id, {}).get("type", "trap"), Color.GRAY)
 
 
-## Полная карточка (награды, магазин, колода). Размер ~ 200×290.
+static func card_frame(id: String) -> String:
+	return "card_" + str(Data.cards.get(id, {}).get("type", "trap"))
+
+
+## Значок стоимости: кристалл Тьмы с числом.
+static func cost_badge(cost: int, size: int = 24) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(36, 36)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var i := icon("icons/dark", 4)
+	i.position = Vector2(2, 2)
+	i.size = Vector2(32, 32)
+	c.add_child(i)
+	var l := label(str(cost), size, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+	l.add_theme_color_override("font_outline_color", INK)
+	l.add_theme_constant_override("outline_size", 6)
+	l.size = Vector2(36, 36)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	c.add_child(l)
+	return c
+
+
+## Полная карточка (награды, магазин, колода).
 static func card_view(id: String, up: bool = false, w: int = 200) -> PanelContainer:
 	var d: Dictionary = Data.cdef(id, up)
-	var tc := card_color(id)
-	var rc: Color = Data.RARITY_COLORS.get(d.rarity, Color.GRAY)
-	var p := panel(Color("#1a1424"), 14, 10, tc, 4)
-	p.custom_minimum_size = Vector2(w, int(w * 1.42))
+	var p := framed(card_frame(id), 10)
+	p.custom_minimum_size = Vector2(w, int(w * 1.45))
 	var v := vbox(6)
 	p.add_child(v)
 	var top := hbox(6)
 	v.add_child(top)
-	var cost := panel(DARK.darkened(0.35), 30, 4, DARK, 2)
-	cost.custom_minimum_size = Vector2(40, 40)
-	var cl := label(str(int(d.cost)), 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
-	cl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	cost.add_child(cl)
-	top.add_child(cost)
-	var nm := label(Data.card_name(id, up), 22 if w >= 190 else 18, Color.WHITE if not up else GREEN)
+	top.add_child(cost_badge(int(d.cost)))
+	var nm := label(Data.card_name(id, up), 24 if w >= 190 else 16, GREEN if up else TEXT)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	top.add_child(nm)
-	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, rc))
-	var art := ColorRect.new()
-	art.color = tc.darkened(0.6)
-	art.custom_minimum_size = Vector2(0, int(w * 0.32))
+	var art := framed("panel_dark", 4)
+	art.add_child(center(card_icon(id, 6 if w >= 190 else 5)))
 	v.add_child(art)
-	var glyph := label(card_glyph(id), int(w * 0.2), tc.lightened(0.3), HORIZONTAL_ALIGNMENT_CENTER, false)
-	glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
-	glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	art.add_child(glyph)
-	v.add_child(label(Data.card_text(id, up), 17 if w >= 190 else 15, TEXT))
+	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, Data.RARITY_COLORS.get(d.rarity, DIM)))
+	var txt := label(Data.card_text(id, up), 16, TEXT)
+	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(txt)
 	if d.type == "monster":
-		v.add_child(label("HP %d   Атк %s" % [int(d.get("hp", 0)), "Ж" if d.get("special", "") == "mimic" else str(int(d.get("atk", 0)))], 20, RED))
+		var sh := hbox(16)
+		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED))
+		sh.add_child(stat("sword", "Ж" if d.get("special", "") == "mimic" else str(int(d.get("atk", 0))), TEXT))
+		v.add_child(sh)
 	ignore_mouse(p)
 	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up)
 	return p
 
 
-## Короткий символ для «иллюстрации» карты.
-static func card_glyph(id: String) -> String:
-	var d: Dictionary = Data.cards.get(id, {})
-	var n: String = d.get("name", "?")
-	return n.substr(0, 1)
-
-
-## Компактная карта для руки и клеток коридора.
+## Компактная карта для руки: стоимость, картинка, название.
 static func mini_card(c: Dictionary, w: int, h: int, cost_override: int = -1) -> PanelContainer:
 	var up: bool = c.get("up", false) or c.get("temp_up", false)
 	var d: Dictionary = Data.cdef(c.id, up)
-	var tc := card_color(c.id)
-	var border := tc
-	if c.get("temp_up", false):
-		border = GREEN
-	var p := panel(tc.darkened(0.7), 10, 6, border, 3)
+	var p := framed(card_frame(c.id), 6)
 	p.custom_minimum_size = Vector2(w, h)
 	var v := vbox(2)
 	p.add_child(v)
-	var top := hbox(4)
-	v.add_child(top)
 	var cost := cost_override if cost_override >= 0 else int(d.cost)
-	top.add_child(label(str(cost), 20, DARK.lightened(0.3), HORIZONTAL_ALIGNMENT_LEFT, false))
-	var nm := label(Data.card_name(c.id, up), 16, Color.WHITE if not up else GREEN)
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(nm)
-	var txt := label(Data.card_text(c.id, up), 13, DIM)
-	txt.clip_text = true
-	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(txt)
-	if d.type == "monster":
-		v.add_child(label("HP %d Атк %s" % [int(c.get("hp", d.get("hp", 0))), "Ж" if d.get("special", "") == "mimic" else str(int(d.get("atk", 0)))], 16, RED, HORIZONTAL_ALIGNMENT_LEFT, false))
+	v.add_child(cost_badge(cost))
+	var ic := card_icon(c.id, 5 if w >= 90 else 4)
+	ic.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(ic)
+	var nm := label(Data.card_name(c.id, up), 16, GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	v.add_child(nm)
+	if c.get("temp_up", false):
+		p.add_theme_stylebox_override("panel", frame("slot_ok", 6))
 	ignore_mouse(p)
 	return p
 
 
 static func relic_view(id: String) -> PanelContainer:
 	var r: Dictionary = Data.relics[id]
-	var p := panel(PANEL2, 12, 10, GOLD.darkened(0.3), 2)
+	var p := framed("panel_light", 12)
+	var h := hbox(12)
+	p.add_child(h)
+	var ic := icon("icons/coin" if r.get("weak", false) else "icons/soul", 5)
+	h.add_child(ic)
 	var v := vbox(4)
-	p.add_child(v)
-	v.add_child(label(r.name, 22, GOLD))
-	v.add_child(label(r.text, 18, TEXT))
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	v.add_child(label(r.name, 24, GOLD))
+	v.add_child(label(r.text, 16, TEXT))
 	ignore_mouse(p)
 	return p
 
 
 # ---------------------------------------------------------------- всплывающие окна
 
-## Затемнение + окно по центру. Возвращает {overlay, box}.
+## Затемнение + окно по центру. Возвращает {overlay, box, root}.
 static func popup(parent: Node, heading: String, close_text: String = "Закрыть") -> Dictionary:
 	var ov := ColorRect.new()
-	ov.color = Color(0, 0, 0, 0.72)
+	ov.color = Color(0.03, 0.02, 0.05, 0.8)
 	full(ov)
 	ov.mouse_filter = Control.MOUSE_FILTER_STOP
 	parent.add_child(ov)
-	var m := margin(28)
+	var m := margin(24)
 	full(m)
 	ov.add_child(m)
-	var center := CenterContainer.new()
-	m.add_child(center)
-	var p := panel(PANEL, 18, 18, ACCENT, 3)
-	p.custom_minimum_size = Vector2(600, 0)
-	center.add_child(p)
-	var v := vbox(12)
+	var cc := CenterContainer.new()
+	m.add_child(cc)
+	var p := framed("popup", 20)
+	p.custom_minimum_size = Vector2(620, 0)
+	cc.add_child(p)
+	var v := vbox(14)
 	p.add_child(v)
 	if heading != "":
 		v.add_child(title(heading, 32))
@@ -296,19 +489,17 @@ static func popup(parent: Node, heading: String, close_text: String = "Закр�
 
 static func info_popup(parent: Node, heading: String, text: String) -> void:
 	var p := popup(parent, heading)
-	p.box.add_child(label(text, 22))
+	p.box.add_child(label(text, 24))
 	var help: String = Data.keyword_help(text)
 	if help != "":
-		p.box.add_child(label(help, 18, DIM))
+		p.box.add_child(label(help, 16, DIM))
 
 
 static func card_popup(parent: Node, id: String, up: bool) -> void:
 	var p := popup(parent, "")
-	var c := CenterContainer.new()
-	c.add_child(card_view(id, up, 300))
-	p.box.add_child(c)
+	p.box.add_child(center(card_view(id, up, 320)))
 	var help: String = Data.keyword_help(Data.card_text(id, up))
 	if help != "":
-		p.box.add_child(label(help, 18, DIM))
+		p.box.add_child(label(help, 16, DIM))
 	if not up and Data.cards[id].has("up"):
-		p.box.add_child(label("Версия «+»: " + Data.card_text(id, true), 18, GREEN))
+		p.box.add_child(label("Версия «+»: " + Data.card_text(id, true), 16, GREEN))

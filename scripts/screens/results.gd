@@ -13,7 +13,8 @@ func _ready() -> void:
 	var body: VBoxContainer = lay.body
 	var m: Dictionary = Data.masters.get(r.get("master", "dark_lord"), {})
 	body.add_child(UI.label(("Подземелье выстояло. " if won else "Казна опустела. ") + "Хозяин: " + m.get("name", ""), 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	var p := UI.panel(UI.PANEL2, 14, 16)
+	body.add_child(UI.center(UI.icon("masters/" + str(r.get("master", "dark_lord")), 12)))
+	var p := UI.framed("panel", 16)
 	var v := UI.vbox(8)
 	p.add_child(v)
 	var path := []
@@ -24,7 +25,7 @@ func _ready() -> void:
 	v.add_child(UI.label("Лучшее комбо: ×%d" % int(r.get("best_combo", 0)), 22))
 	if won:
 		v.add_child(UI.label("Осталось в Казне: %d" % int(r.get("treasury", 0)), 22, UI.GOLD))
-	v.add_child(UI.label("Заработано Душ: %d" % int(r.get("souls", 0)), 28, UI.SOUL))
+	v.add_child(UI.stat("soul", "+%d Душ" % int(r.get("souls", 0)), UI.SOUL, 32))
 	body.add_child(p)
 	var unlocked: Array = r.get("unlocked", [])
 	if not unlocked.is_empty():

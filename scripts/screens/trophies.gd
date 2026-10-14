@@ -56,12 +56,14 @@ func _grid(cols: int) -> GridContainer:
 func _portrait(hero_id: String, key: String, sub: String) -> Control:
 	var d: Dictionary = Data.hero_def(hero_id)
 	var got: bool = Game.meta.trophies.has(key)
-	var p := UI.panel(Color(d.get("color", "#888888")).darkened(0.55) if got else Color("#0c0a10"), 12, 8, UI.GOLD if got else UI.PANEL3, 2)
-	p.custom_minimum_size = Vector2(160, 150)
+	var p := UI.framed("popup" if got else "panel_dark", 8)
+	p.custom_minimum_size = Vector2(160, 168)
 	var v := UI.vbox(2)
 	p.add_child(v)
-	var big := UI.label(d.name.substr(0, 1) if got else "?", 48, Color.WHITE if got else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
-	v.add_child(big)
+	var spr := UI.hero_icon(hero_id, 7)
+	if not got:
+		spr.modulate = Color(0, 0, 0, 0.8)
+	v.add_child(UI.center(spr))
 	v.add_child(UI.label(d.name if got else "???", 16, UI.TEXT if got else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	if sub != "":
 		v.add_child(UI.label(sub, 14, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))

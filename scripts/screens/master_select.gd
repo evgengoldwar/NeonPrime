@@ -26,12 +26,13 @@ func _build() -> void:
 	prev.custom_minimum_size = Vector2(90, 90)
 	prev.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	nav.add_child(prev)
-	var portrait := UI.panel(Color(m.color).darkened(0.5) if unlocked else Color("#0c0a10"), 100, 20, Color(m.color) if unlocked else UI.DIM, 4)
-	portrait.custom_minimum_size = Vector2(0, 260)
+	var portrait := UI.framed("popup" if unlocked else "panel_dark", 12)
+	portrait.custom_minimum_size = Vector2(0, 240)
 	portrait.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var pl := UI.label(m.name.substr(0, 1) if unlocked else "?", 120, Color.WHITE if unlocked else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER, false)
-	pl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	portrait.add_child(pl)
+	var spr := UI.icon("masters/" + str(m.id), 16)
+	if not unlocked:
+		spr.modulate = Color(0, 0, 0, 0.85)
+	portrait.add_child(UI.center(spr))
 	nav.add_child(portrait)
 	var nxt := UI.button(">", func(): _shift(1), 34)
 	nxt.custom_minimum_size = Vector2(90, 90)
@@ -50,7 +51,7 @@ func _build() -> void:
 	info.add_child(iv)
 	iv.add_child(UI.label("Пассивка: " + m.passive_text, 22))
 	iv.add_child(UI.label("Стиль: " + m.style, 20, UI.DIM))
-	iv.add_child(UI.label("Стартовая Казна: %d" % int(m.treasury), 20, UI.GOLD))
+	iv.add_child(UI.stat("coin", "Казна %d" % int(m.treasury), UI.GOLD, 24))
 	body.add_child(info)
 	body.add_child(UI.label("Стартовая колода (10 карт)", 22, UI.GOLD))
 	var grid := GridContainer.new()
@@ -58,7 +59,7 @@ func _build() -> void:
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	for id in m.deck:
-		var mc := UI.mini_card({"id": id, "up": false}, 124, 120)
+		var mc := UI.mini_card({"id": id, "up": false}, 124, 150)
 		mc.mouse_filter = Control.MOUSE_FILTER_STOP
 		mc.gui_input.connect(_card_input.bind(id))
 		grid.add_child(mc)

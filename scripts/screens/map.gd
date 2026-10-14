@@ -1,14 +1,11 @@
 extends Control
-## Карта этажа: граф узлов снизу вверх.
+## Карта этажа: граф узлов снизу вверх, пиксельные значки и пунктирные тропы.
 
 const UI := preload("res://scripts/ui/ui.gd")
 const RunMenus := preload("res://scripts/ui/run_menus.gd")
 
-const ROW_H := 165
-const NODE_COLORS := {"battle": Color("#c05050"), "elite": Color("#e08030"), "shop": Color("#50b060"),
-	"altar": Color("#9060e0"), "event": Color("#4a90d0"), "treasure": Color("#e0c040"), "boss": Color("#ff3060")}
-const NODE_ICONS := {"battle": "Бой", "elite": "Элита", "shop": "Лавка", "altar": "Алтарь",
-	"event": "?", "treasure": "Клад", "boss": "БОСС"}
+const ROW_H := 160
+const NODE := 84
 
 var canvas: Control
 var positions := {}
@@ -17,31 +14,39 @@ var positions := {}
 func _ready() -> void:
 	var loc: Dictionary = Data.locations[Game.run.location]
 	Sfx.music(0.85 + 0.05 * Data.location_list.find(loc))
-	var m := UI.margin(14)
+	UI.backdrop(self, "tiles/floor_" + str(loc.id), 0.6)
+	var m := UI.margin(12)
 	UI.full(m)
 	add_child(m)
 	var v := UI.vbox(10)
 	m.add_child(v)
 	v.add_child(UI.top_bar())
-	var buttons := UI.hbox(8)
-	buttons.add_child(UI.button("Колода (%d)" % Game.run.deck.size(), func(): RunMenus.deck(self), 20, 60))
-	buttons.add_child(UI.button("Реликвии (%d)" % Game.run.relics.size(), func(): RunMenus.relics(self), 20, 60))
-	buttons.add_child(UI.button("Пауза", func(): RunMenus.pause(self), 20, 60))
-	v.add_child(buttons)
-	var head := UI.panel(Color(loc.bg), 12, 10, Color(loc.light), 2)
+	var head := UI.framed("panel", 12)
+	var hh := UI.hbox(12)
+	head.add_child(hh)
+	hh.add_child(UI.hero_icon(loc.boss, 5))
 	var hv := UI.vbox(2)
-	head.add_child(hv)
-	hv.add_child(UI.label(loc.name, 26, Color(loc.light)))
+	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hh.add_child(hv)
+	hv.add_child(UI.label(loc.name, 32, Color(loc.light)))
 	hv.add_child(UI.label(loc.rule_text, 16, UI.DIM))
 	v.add_child(head)
 	var sc := UI.scroll()
 	v.add_child(sc)
 	canvas = Control.new()
-	canvas.custom_minimum_size = Vector2(680, ROW_H * 7 + 60)
+	canvas.custom_minimum_size = Vector2(680, ROW_H * 7 + 40)
 	canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(canvas)
 	_layout_nodes()
 	canvas.draw.connect(_draw_links)
+	var buttons := UI.hbox(8)
+	buttons.add_child(UI.button("Колода %d" % Game.run.deck.size(), func(): RunMenus.deck(self), 24, 64))
+	buttons.add_child(UI.button("Реликвии %d" % Game.run.relics.size(), func(): RunMenus.relics(self), 24, 64))
+	var pause := UI.button("II", func(): RunMenus.pause(self), 24, 64)
+	pause.custom_minimum_size = Vector2(72, 64)
+	pause.size_flags_horizontal = Control.SIZE_SHRINK_END
+	buttons.add_child(pause)
+	v.add_child(buttons)
 	# Карта читается снизу вверх: прокручиваем к текущему ряду.
 	await get_tree().process_frame
 	var cur := int(Game.run.current)
@@ -52,7 +57,7 @@ func _ready() -> void:
 func _node_pos(n: Dictionary) -> Vector2:
 	var w := 680.0
 	var x := w * (int(n.col) + 1) / float(int(n.count) + 1)
-	var y := canvas.custom_minimum_size.y - 80 - int(n.row) * ROW_H
+	var y := canvas.custom_minimum_size.y - 70 - int(n.row) * ROW_H
 	return Vector2(x, y)
 
 
@@ -64,49 +69,67 @@ func _layout_nodes() -> void:
 		positions[int(n.id)] = pos
 		var is_avail: bool = int(n.id) in avail
 		var visited: bool = n.get("visited", false)
-		var col: Color = NODE_COLORS.get(n.type, Color.GRAY)
-		var sz := 116.0 if n.type == "boss" else 92.0
+		var is_boss: bool = n.type == "boss"
+		var sz: float = 116.0 if is_boss else float(NODE)
 		var b := Button.new()
 		b.size = Vector2(sz, sz)
 		b.position = pos - b.size / 2
-		var txt: String = NODE_ICONS.get(n.type, "?")
-		if n.type == "event" and cartographer and n.event != "":
-			txt = Data.events[n.event].name.substr(0, 7) + "…"
-		if n.type == "boss":
-			txt = "БОСС\n" + Data.hero_def(Data.locations[Game.run.location].boss).name.split(" ")[0]
-		b.text = txt
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		b.add_theme_font_size_override("font_size", 16 if txt.length() > 6 else 20)
-		var bg := col.darkened(0.55)
+		var fr := "btn"
+		if is_boss:
+			fr = "card_monster"
+		elif is_avail:
+			fr = "btn_gold"
+		b.add_theme_stylebox_override("normal", UI.frame(fr, 4))
+		b.add_theme_stylebox_override("hover", UI.frame("btn_gold_hover" if is_avail else fr, 4))
+		b.add_theme_stylebox_override("pressed", UI.frame("btn_pressed", 4))
+		b.add_theme_stylebox_override("disabled", UI.frame("card_monster" if is_boss else "panel_dark", 4))
+		b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		var ic := UI.icon("nodes/" + str(n.type), 7 if is_boss else 5)
+		UI.full(ic)
+		b.add_child(ic)
 		if visited:
-			bg = col.darkened(0.2)
-		elif not is_avail:
-			bg = col.darkened(0.8)
-		var border := Color.WHITE if is_avail else col.darkened(0.3)
-		var st := UI.style(bg, int(sz / 2), border, 4 if is_avail else 2, 4)
-		b.add_theme_stylebox_override("normal", st)
-		b.add_theme_stylebox_override("hover", UI.style(bg.lightened(0.2), int(sz / 2), border, 4, 4))
-		b.add_theme_stylebox_override("pressed", UI.style(col, int(sz / 2), Color.WHITE, 4, 4))
-		b.add_theme_stylebox_override("disabled", st)
+			ic.modulate = Color(0.45, 0.45, 0.5)
+		elif not is_avail and not is_boss:
+			ic.modulate = Color(0.75, 0.72, 0.8)
 		b.disabled = not is_avail
-		b.tooltip_text = Game.NODE_NAMES.get(n.type, "")
+		var tip: String = Game.NODE_NAMES.get(n.type, "")
+		if n.type == "event" and cartographer and n.event != "":
+			tip = Data.events[n.event].name
+			var cap := UI.label(Data.events[n.event].name, 16, UI.SOUL, HORIZONTAL_ALIGNMENT_CENTER)
+			cap.size = Vector2(150, 40)
+			cap.position = Vector2((sz - 150) / 2.0, sz)
+			b.add_child(cap)
+		b.tooltip_text = tip
 		var nid := int(n.id)
 		b.pressed.connect(func(): _enter(nid))
 		canvas.add_child(b)
 		if is_avail:
+			b.pivot_offset = b.size / 2
 			var tw := b.create_tween().set_loops()
-			tw.tween_property(b, "modulate", Color(1.3, 1.3, 1.3), 0.6)
-			tw.tween_property(b, "modulate", Color.WHITE, 0.6)
+			tw.tween_property(b, "scale", Vector2(1.08, 1.08), 0.5)
+			tw.tween_property(b, "scale", Vector2.ONE, 0.5)
+	if int(Game.run.current) >= 0:
+		var here := UI.icon("masters/" + str(Game.run.master), 4)
+		here.size = here.custom_minimum_size
+		var at: Vector2 = positions[int(Game.run.current)]
+		here.position = at - here.size / 2 + Vector2(44, -40)
+		here.z_index = 2
+		canvas.add_child(here)
 
 
+## Пунктирные пиксельные тропы между узлами.
 func _draw_links() -> void:
 	for n in Game.run.map.nodes:
 		var a: Vector2 = positions[int(n.id)]
 		for l in n.links:
 			var b: Vector2 = positions[int(l)]
 			var on_path: bool = n.get("visited", false) and Game.map_node(int(l)).get("visited", false)
-			var col := UI.GOLD if on_path else Color(1, 1, 1, 0.22)
-			canvas.draw_line(a, b, col, 5.0 if on_path else 3.0, true)
+			var col := UI.GOLD if on_path else Color(0.95, 0.9, 1.0, 0.35)
+			var dist := a.distance_to(b)
+			var steps := int(dist / 14.0)
+			for i in range(1, steps):
+				var p := a.lerp(b, float(i) / steps).round()
+				canvas.draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), col)
 
 
 func _enter(id: int) -> void:

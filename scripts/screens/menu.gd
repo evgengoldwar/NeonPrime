@@ -15,18 +15,26 @@ func _ready() -> void:
 	var top := UI.hbox()
 	v.add_child(top)
 	top.add_child(UI.spacer(0))
-	var souls := UI.label("Души: %d" % int(Game.meta.souls), 26, UI.SOUL, HORIZONTAL_ALIGNMENT_RIGHT, false)
-	souls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sp := UI.spacer(0)
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(sp)
+	var souls := UI.framed("panel_dark", 8)
+	souls.add_child(UI.stat("soul", str(int(Game.meta.souls)), UI.SOUL, 32))
 	top.add_child(souls)
-	v.add_child(UI.spacer(60))
-	v.add_child(UI.title("Я — ПОДЗЕМЕЛЬЕ", 60))
-	v.add_child(UI.label("Не дай героям добраться до Казны", 24, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	v.add_child(UI.spacer(40))
+	var logo := UI.framed("popup", 18)
+	var lv := UI.vbox(6)
+	logo.add_child(lv)
+	lv.add_child(UI.center(UI.icon("masters/dark_lord", 8)))
+	lv.add_child(UI.title("Я — ПОДЗЕМЕЛЬЕ", 48))
+	lv.add_child(UI.label("Не дай героям добраться до Казны", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	v.add_child(logo)
 	v.add_child(UI.spacer(0, true))
 	if Game.has_run():
-		var b := UI.button("Продолжить забег", func(): Game.main.goto(Game.resume_screen()), 30, 90)
+		var b := UI.button("Продолжить забег", func(): Game.main.goto(Game.resume_screen()), 32, 88)
 		UI.tint_button(b, UI.GREEN)
 		v.add_child(b)
-	v.add_child(UI.tint_button(UI.button("Новый забег", _new_run, 30, 90), UI.ACCENT))
+	v.add_child(UI.tint_button(UI.button("Новый забег", _new_run, 32, 88), UI.RED))
 	var row := UI.hbox()
 	row.add_child(UI.button("Замок", func(): Game.main.goto("castle")))
 	row.add_child(UI.button("Трофейный зал", func(): Game.main.goto("trophies")))
@@ -35,7 +43,7 @@ func _ready() -> void:
 	row2.add_child(UI.button("Ежедневное подземелье", func(): Game.main.goto("daily")))
 	row2.add_child(UI.button("Настройки", func(): Game.main.goto("settings")))
 	v.add_child(row2)
-	v.add_child(UI.label("Забегов: %d · Побед: %d · Убито героев: %d" % [int(Game.meta.runs), int(Game.meta.wins), int(Game.meta.kills)], 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	v.add_child(UI.label("ЗАБЕГОВ %d · ПОБЕД %d · УБИТО %d" % [int(Game.meta.runs), int(Game.meta.wins), int(Game.meta.kills)], 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 
 
 func _new_run() -> void:
@@ -61,31 +69,42 @@ func _go_new() -> void:
 
 
 func _build_background() -> void:
-	var hall := ColorRect.new()
-	hall.color = Color("#1c1426")
+	UI.backdrop(self, "tiles/wall_menu", 0.2)
+	var hall := Control.new()
 	hall.anchor_left = 0.5
 	hall.anchor_right = 0.5
 	hall.anchor_bottom = 1.0
-	hall.offset_left = -150
-	hall.offset_right = 150
+	hall.offset_left = -128
+	hall.offset_right = 128
 	hall.clip_contents = true
 	hall.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(hall)
-	for i in 7:
-		var tile := ColorRect.new()
-		tile.color = Color("#251b33") if i % 2 == 0 else Color("#1f172b")
-		tile.position = Vector2(0, i * 190)
-		tile.size = Vector2(300, 180)
-		tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		hall.add_child(tile)
-	var colors := ["#b5651d", "#3d5fc4", "#d4b84a", "#4a7d4a"]
-	for i in colors.size():
-		var hero := Panel.new()
-		hero.add_theme_stylebox_override("panel", UI.style(Color(colors[i]), 30))
-		hero.size = Vector2(46, 46)
-		hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hall.add_child(UI.tiled("tiles/floor_cellar"))
+	var shade := ColorRect.new()
+	shade.color = Color(0.09, 0.07, 0.11, 0.45)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UI.full(shade)
+	hall.add_child(shade)
+	var ids := ["warrior", "thief", "mage", "paladin", "bard"]
+	for i in ids.size():
+		var hero := UI.hero_icon(ids[i], 5)
+		hero.size = hero.custom_minimum_size
 		hall.add_child(hero)
-		var x := 40.0 + i * 60.0
-		hero.position = Vector2(x, -60 - i * 300)
+		hero.position = Vector2(20 + (i % 3) * 70, -80)
 		var tw := hero.create_tween().set_loops()
-		tw.tween_property(hero, "position:y", 1300.0, 9.0 + i).from(-60.0 - i * 120.0)
+		tw.tween_interval(i * 1.6)
+		tw.tween_property(hero, "position:y", 1300.0, 10.0).from(-80.0)
+	for y in [180, 520, 860]:
+		for side in [0, 1]:
+			var t := UI.icon("icons/torch", 4)
+			t.size = Vector2(32, 32)
+			t.anchor_left = 0.5
+			t.anchor_right = 0.5
+			t.offset_left = -164 if side == 0 else 132
+			t.offset_right = t.offset_left + 32
+			t.offset_top = y
+			t.offset_bottom = y + 32
+			add_child(t)
+			var fl := t.create_tween().set_loops()
+			fl.tween_property(t, "modulate", Color(1.3, 1.1, 0.85), 0.35)
+			fl.tween_property(t, "modulate", Color.WHITE, 0.35)

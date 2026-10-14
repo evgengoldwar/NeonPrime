@@ -11,15 +11,15 @@ func _ready() -> void:
 	lay.root.add_child(tb)
 	lay.root.move_child(tb, 0)
 	var body: VBoxContainer = lay.body
-	var chest := UI.panel(Color("#4a3410"), 20, 10, UI.GOLD, 4)
-	chest.custom_minimum_size = Vector2(0, 300)
-	var cl := UI.label("Сундук открыт!", 40, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER, false)
-	cl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	chest.add_child(cl)
+	var chest := UI.framed("popup", 16)
+	var cv := UI.vbox(8)
+	chest.add_child(cv)
+	cv.add_child(UI.center(UI.icon("nodes/treasure", 16)))
+	cv.add_child(UI.title("Сундук открыт!", 40))
 	body.add_child(chest)
 	var p: Dictionary = Game.pending
 	if int(p.get("gold", 0)) > 0:
-		body.add_child(UI.label("+%d золота в Казну" % int(p.gold), 30, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		body.add_child(UI.center(UI.stat("coin", "+%d в Казну" % int(p.gold), UI.GOLD, 40)))
 	elif p.get("relic", "") != "":
 		body.add_child(UI.label("Реликвия:", 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		body.add_child(UI.relic_view(p.relic))

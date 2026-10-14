@@ -13,7 +13,7 @@ func _build() -> void:
 		ch.queue_free()
 	var lay := UI.screen_layout(self, "Замок")
 	var body: VBoxContainer = lay.body
-	body.add_child(UI.label("Души: %d" % int(Game.meta.souls), 28, UI.SOUL, HORIZONTAL_ALIGNMENT_CENTER))
+	body.add_child(UI.center(UI.stat("soul", str(int(Game.meta.souls)), UI.SOUL, 40)))
 	body.add_child(UI.label("Крылья", 28, UI.GOLD))
 	for w in Data.wings:
 		body.add_child(_wing_row(w))
@@ -26,9 +26,17 @@ func _build() -> void:
 
 func _wing_row(w: Dictionary) -> Control:
 	var open: bool = Game.wing_unlocked(w.id)
-	var p := UI.panel(UI.PANEL2 if open else UI.PANEL, 14, 14, UI.GOLD if open else UI.DIM.darkened(0.4), 2)
+	var p := UI.framed("popup" if open else "panel", 14)
+	var outer := UI.hbox(14)
+	p.add_child(outer)
+	var spr := UI.icon("masters/" + str(w.master), 7)
+	spr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if not open:
+		spr.modulate = Color(0, 0, 0, 0.8)
+	outer.add_child(spr)
 	var v := UI.vbox(6)
-	p.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(v)
 	var h := UI.hbox()
 	v.add_child(h)
 	var nm := UI.label("Крыло «%s»" % w.name, 26, UI.GOLD if open else UI.TEXT)
@@ -46,7 +54,7 @@ func _wing_row(w: Dictionary) -> Control:
 	v.add_child(bh)
 	bh.add_child(UI.button("Карты крыла", func(): _show_cards(w), 20, 60))
 	if not open:
-		var b := UI.button("Открыть за %d Душ" % int(w.cost), func(): _buy_wing(w), 20, 60)
+		var b := UI.button("Открыть: %d Душ" % int(w.cost), func(): _buy_wing(w), 16, 60)
 		b.disabled = int(Game.meta.souls) < int(w.cost)
 		UI.tint_button(b, UI.SOUL)
 		bh.add_child(b)
@@ -56,7 +64,7 @@ func _wing_row(w: Dictionary) -> Control:
 func _upgrade_row(u: Dictionary) -> Control:
 	var lvl: int = Game.upgrade_level(u.id)
 	var costs: Array = u.costs
-	var p := UI.panel(UI.PANEL, 14, 12)
+	var p := UI.framed("panel", 12)
 	var h := UI.hbox()
 	p.add_child(h)
 	var v := UI.vbox(4)

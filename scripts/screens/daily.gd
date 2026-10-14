@@ -11,9 +11,10 @@ func _ready() -> void:
 	var lay := UI.screen_layout(self, "Ежедневное подземелье")
 	var body: VBoxContainer = lay.body
 	var m: Dictionary = Data.masters[info.master]
-	var p := UI.panel(UI.PANEL2, 14, 16, UI.ACCENT, 2)
+	var p := UI.framed("popup", 16)
 	var v := UI.vbox(8)
 	p.add_child(v)
+	v.add_child(UI.center(UI.icon("masters/" + str(info.master), 10)))
 	v.add_child(UI.label("Правила на " + info.date, 26, UI.GOLD))
 	v.add_child(UI.label("Хозяин: " + m.name + " — " + m.passive_text, 22))
 	v.add_child(UI.label("Модификатор: " + Game.DAILY_MODS[info.mod], 22))
