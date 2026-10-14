@@ -117,6 +117,8 @@ func device_info() -> String:
 		RenderingServer.get_video_adapter_api_version()])
 	lines.append("Отрисовка: %s (%s)" % [
 		RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
+	lines.append("Звук: %d Гц, задержка %.0f мс" % [
+		AudioServer.get_mix_rate(), AudioServer.get_output_latency() * 1000.0])
 	lines.append("Экран: %s, окно %s, язык %s" % [
 		DisplayServer.screen_get_size(), DisplayServer.window_get_size(), OS.get_locale()])
 	return "\n".join(lines)
@@ -135,6 +137,9 @@ func _collect_previous() -> void:
 	var text := "ОТЧЁТ О ПАДЕНИИ «Я — подземелье»\n"
 	text += "Прошлый сеанс оборвался без нормального выхода. Ниже его журнал (последние строки — момент падения).\n\n"
 	text += "\n".join(lines)
+	var exit_info := android_exit_info()
+	if exit_info != "":
+		text += "\n\n--- причина завершения от Android ---\n" + exit_info
 	var engine_log := _engine_log_tail(60)
 	if engine_log != "":
 		text += "\n\n--- журнал движка ---\n" + engine_log
@@ -145,6 +150,68 @@ func _collect_previous() -> void:
 		out.store_string(report)
 		out.close()
 	report_path = _save_public(report)
+
+
+## Что Android знает о прошлом завершении игры (ApplicationExitInfo, Android 11+).
+## Для нативного падения в trace лежит дамп со стеком вызовов: вытаскиваем из него текст.
+func android_exit_info() -> String:
+	if OS.get_name() != "Android" or not Engine.has_singleton("AndroidRuntime"):
+		return ""
+	var reasons := {1: "сама завершилась", 2: "убита сигналом", 3: "нехватка памяти", 4: "падение Java",
+		5: "НАТИВНОЕ ПАДЕНИЕ", 6: "зависание (ANR)", 7: "ошибка запуска", 9: "перерасход ресурсов",
+		10: "закрыта пользователем", 11: "остановлена пользователем", 13: "другое", 14: "заморожена"}
+	var rt = Engine.get_singleton("AndroidRuntime")
+	var ctx = rt.getApplicationContext()
+	if ctx == null:
+		return "нет доступа к Context"
+	var am = ctx.getSystemService("activity")
+	if am == null:
+		return "нет доступа к ActivityManager"
+	var list = am.getHistoricalProcessExitReasons(ctx.getPackageName(), 0, 3)
+	if list == null:
+		return "Android не вернул историю завершений"
+	var out := []
+	var n: int = list.size()
+	for i in n:
+		var info = list.get(i)
+		if info == null:
+			continue
+		var code: int = info.getReason()
+		out.append("#%d: %s (код %d), статус/сигнал %d, время %s" % [
+			i + 1, reasons.get(code, "?"), code, info.getStatus(),
+			Time.get_datetime_string_from_unix_time(int(info.getTimestamp() / 1000))])
+		var desc = info.getDescription()
+		if desc != null and str(desc) != "":
+			out.append("   описание: " + str(desc))
+		out.append("   память: PSS %d КБ, RSS %d КБ" % [info.getPss(), info.getRss()])
+		if i == 0 and (code == 5 or code == 6 or code == 4):
+			out.append(_trace_text(info))
+	return "\n".join(out)
+
+
+func _trace_text(info) -> String:
+	var stream = info.getTraceInputStream()
+	if stream == null:
+		return "   (дампа нет)"
+	var bytes = stream.readAllBytes()
+	stream.close()
+	if not bytes is PackedByteArray:
+		return "   (дамп не прочитан)"
+	# Дамп нативного падения — protobuf: достаём из него читаемые строки, как утилита strings.
+	var lines := []
+	var cur := PackedByteArray()
+	for b in bytes:
+		if b >= 32 and b < 127:
+			cur.append(b)
+		else:
+			if cur.size() >= 4:
+				lines.append(cur.get_string_from_ascii())
+			cur = PackedByteArray()
+		if lines.size() >= 250:
+			break
+	if cur.size() >= 4:
+		lines.append(cur.get_string_from_ascii())
+	return "   дамп (%d байт):\n%s" % [bytes.size(), "\n".join(lines)]
 
 
 ## Хвост предыдущего журнала движка (user://logs, файлы ротируются при запуске).

@@ -2,6 +2,7 @@ extends Node
 ## Звуки и музыка без ассетов: короткие тоны и фоновый гул синтезируются на лету.
 
 const RATE := 22050
+const PAD_FRAMES := 2048
 
 var _sounds := {}
 var _players := []
@@ -27,6 +28,8 @@ func _ready() -> void:
 	_music = AudioStreamPlayer.new()
 	_music.stream = _drone()
 	_music.volume_db = -14.0
+	# Повтор музыки делаем сами, а не петлёй AudioStreamWAV.
+	_music.finished.connect(_on_music_finished)
 	add_child(_music)
 
 
@@ -52,6 +55,12 @@ func music(pitch: float = 1.0) -> void:
 		_music.play()
 
 
+func _on_music_finished() -> void:
+	if Game.setting("music"):
+		CrashLog.event("музыка: повтор")
+		_music.play()
+
+
 func stop_music() -> void:
 	_music.stop()
 
@@ -60,9 +69,13 @@ func refresh_music() -> void:
 	music(_music_pitch)
 
 
-func _wav(samples: PackedFloat32Array, loop: bool = false) -> AudioStreamWAV:
+## Звук без петли движка и с «подушкой» тишины в конце: смешивание звука
+## не должно читать за краем данных. Ровно в точке петли музыки игра падала
+## на Pixel 9 (Android с аппаратной защитой памяти).
+func _wav(samples: PackedFloat32Array) -> AudioStreamWAV:
 	var bytes := PackedByteArray()
-	bytes.resize(samples.size() * 2)
+	bytes.resize((samples.size() + PAD_FRAMES) * 2)
+	bytes.fill(0)
 	for i in samples.size():
 		var v := int(clampf(samples[i], -1.0, 1.0) * 32767.0)
 		bytes.encode_s16(i * 2, v)
@@ -71,9 +84,7 @@ func _wav(samples: PackedFloat32Array, loop: bool = false) -> AudioStreamWAV:
 	w.mix_rate = RATE
 	w.stereo = false
 	w.data = bytes
-	if loop:
-		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		w.loop_end = samples.size()
+	w.loop_mode = AudioStreamWAV.LOOP_DISABLED
 	return w
 
 
@@ -107,4 +118,4 @@ func _drone() -> AudioStreamWAV:
 		var lfo := 0.5 + 0.5 * sin(TAU * t / 8.0)
 		var v := sin(TAU * 55.0 * t) * 0.35 + sin(TAU * 82.5 * t) * 0.2 * lfo + sin(TAU * 110.0 * t + sin(TAU * 0.25 * t)) * 0.1
 		s.append(v * 0.5)
-	return _wav(s, true)
+	return _wav(s)
