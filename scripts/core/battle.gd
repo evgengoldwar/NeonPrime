@@ -7,6 +7,9 @@ extends RefCounted
 const HALLS := 3
 const MAX_HAND := 7
 const MAX_HALL_TICKS := 400
+## Все HP, урон и золото в игре ×10 (чтобы +15% за уровень всегда давали прибавку).
+## Яд за тик убывает на столько же — длительность Яда прежняя.
+const POISON_STEP := 10
 const SAVE_PROPS := [
 	"heroes", "cells", "corridor_len", "hand", "draw_pile", "discard", "exhausted",
 	"dark", "hall", "phase", "tick_no", "discount", "next_discount", "combo", "best_combo",
@@ -65,7 +68,7 @@ func setup(hero_list: Array, deck: Array, opts: Dictionary = {}) -> void:
 		draw_pile.append({"uid": c.uid, "id": c.id, "up": c.up, "lvl": int(c.get("lvl", 1))})
 	Game.shuffle(draw_pile)
 	if Game.has_relic("dark_throne"):
-		_gold(-2, "Тёмный трон")
+		_gold(-20, "Тёмный трон")
 	if Game.run.get("master", "") == "dragoness" and not tutorial:
 		var id := "dragon" if Game.run.get("dragon_hatched", false) else "dragon_egg"
 		var b := _make_board({"uid": -1, "id": id, "up": Game.run.get("dragon_up", false), "lvl": Game.card_level(id)}, 0)
@@ -311,6 +314,8 @@ func _spell_action(a: Dictionary) -> void:
 			for h in _active_heroes():
 				h.curse += int(a.n)
 				events.append({"t": "status", "hero": h.uid, "text": "Проклятие %d" % int(a.n)})
+		"gold":
+			_gold(int(a.n), "Заклинание")
 		"monsters_hp":
 			for c in cells:
 				if c != null and Data.cards[c.id].type == "monster":
@@ -352,8 +357,8 @@ func launch() -> void:
 			for j in [i - 1, i + 1]:
 				if j >= 0 and j < corridor_len and cells[j] != null and cells[j].id in ["wolf", "rat_swarm"] and not cells[j].buffed:
 					cells[j].buffed = true
-					cells[j].hp += 2
-					cells[j].max_hp += 2
+					cells[j].hp += 20
+					cells[j].max_hp += 20
 	# Правило шахты: одна случайная пустая клетка обвалится.
 	mine_cell = -1
 	if Game.location_rule() == "mine":
@@ -362,7 +367,7 @@ func launch() -> void:
 			if cells[i] == null:
 				empties.append(i)
 		if empties.is_empty():
-			_gold(-2, "Обвал бьёт по Казне")
+			_gold(-20, "Обвал бьёт по Казне")
 		else:
 			mine_cell = Game.rpick(empties)
 	for h in _active_heroes():
@@ -380,19 +385,19 @@ func _before_hall(h: Dictionary) -> void:
 			o.curse = 0
 		_msg(h, "Очищение")
 	if _has_trait(h, "light"):
-		_heal(h, 3 if Game.has_collection("paladin") else 4)
+		_heal(h, 30 if Game.has_collection("paladin") else 40)
 	if _has_trait(h, "marksman"):
 		var m := _first_monster()
 		if m >= 0:
 			_msg(h, "Меткий выстрел")
-			_hurt_monster(m, 4, h)
+			_hurt_monster(m, 40, h)
 	if _has_trait(h, "tomb_raider"):
 		var empty := 0
 		for i in corridor_len:
 			if cells[i] == null:
 				empty += 1
 		if empty > 0:
-			_gold(-empty, h.name + " крадёт золото")
+			_gold(-10 * empty, h.name + " крадёт золото")
 	if _has_trait(h, "tide"):
 		for i in corridor_len - 1:
 			if cells[i] != null:
@@ -407,7 +412,7 @@ func _before_hall(h: Dictionary) -> void:
 			cells[m].freeze_ticks = 2
 			_msg(h, "Монстр заморожен")
 	if _has_trait(h, "rune_armor") or "armored" in h.mods:
-		h.armor = maxi(h.armor, 6)
+		h.armor = maxi(h.armor, 60)
 	# Боссы
 	if _has_trait(h, "boss_fearless") and h.phase == 2:
 		h.slow = 0
@@ -433,7 +438,7 @@ func _before_hall(h: Dictionary) -> void:
 			cells[b] = tmp
 			_msg(h, "Ольвен меняет карты %d и %d" % [a + 1, b + 1])
 	if _has_trait(h, "boss_king"):
-		_heal(h, 10)
+		_heal(h, 100)
 	if _has_trait(h, "boss_ice"):
 		var cand := []
 		for i in _occupied():
@@ -514,7 +519,7 @@ func _hero_tick(h: Dictionary) -> void:
 		for t in times:
 			_damage(h, h.poison, "poison", -1)
 		if Game.run.get("master", "") != "alchemist":
-			h.poison -= 1
+			h.poison = maxi(0, h.poison - POISON_STEP)
 	if _check_death(h):
 		return
 	# 2. Ауры
@@ -579,7 +584,7 @@ func _trigger_enter(h: Dictionary, idx: int) -> void:
 		if idx == mine_cell:
 			mine_cell = -1
 			_msg(h, "Обвал!")
-			_damage(h, 4, "env", -1)
+			_damage(h, 40, "env", -1)
 		return
 	_depth += 1
 	_enter_card(h, idx, c)
@@ -599,7 +604,7 @@ func _enter_card(h: Dictionary, idx: int, c: Dictionary) -> void:
 		return
 	# Огненный щит Мага и Ольвен
 	var burns_slime := _has_trait(h, "fire_shield") or _has_trait(h, "boss_shuffle")
-	if burns_slime and (c.id == "slime" or (_has_trait(h, "fire_shield") and d.type == "monster" and c.hp > 0 and c.hp <= 3)):
+	if burns_slime and (c.id == "slime" or (_has_trait(h, "fire_shield") and d.type == "monster" and c.hp > 0 and c.hp <= 30)):
 		_msg(h, "Сжигает " + d.name)
 		_remove_card(idx, false)
 		return
@@ -640,7 +645,7 @@ func _enter_card(h: Dictionary, idx: int, c: Dictionary) -> void:
 	if "once" in d.kw:
 		c.once_used = true
 	if d.type == "trap" and _has_trait(h, "boss_fearless"):
-		h.armor += 1
+		h.armor += 10
 
 
 func _trigger_exit(h: Dictionary, idx: int) -> void:
@@ -710,7 +715,7 @@ func _action(a: Dictionary, h: Dictionary, idx: int, c) -> void:
 		"burn":
 			var n := int(a.n)
 			if is_trap and Game.location_rule() == "volcano":
-				n += 1
+				n += 10
 			_apply_burn(h, n)
 		"vuln":
 			h.vuln = 1
@@ -765,7 +770,7 @@ func _trap_bonus(idx: int) -> int:
 			if d.get("special", "") == "dark_altar" and not cells[j].disabled:
 				b += int(d.p)
 	if Game.run.get("master", "") == "smith" and _adjacent_type(idx, "trap"):
-		b += 1
+		b += 10
 	return b
 
 
@@ -847,7 +852,7 @@ func _damage(h: Dictionary, n: int, kind: String, src_uid: int) -> int:
 	if not h.first_hit_done:
 		h.first_hit_done = true
 		if _has_trait(h, "thick_skin"):
-			n = maxi(0, n - (1 if Game.has_collection("warrior") else 2))
+			n = maxi(0, n - (10 if Game.has_collection("warrior") else 20))
 			_status(h, "Толстокожий")
 	if not is_status and h.armor > 0:
 		var absorbed := mini(h.armor, n)
@@ -881,7 +886,7 @@ func _phase_two(h: Dictionary) -> void:
 	events.append({"t": "phase2", "hero": h.uid, "text": text})
 	match h.trait:
 		"boss_fearless":
-			h.atk = maxi(h.atk, 6)
+			h.atk = maxi(h.atk, 60)
 		"boss_king":
 			if not h.bless_used:
 				h.bless_used = true
@@ -906,7 +911,7 @@ func _check_death(h: Dictionary) -> bool:
 	if Game.run.get("notoriety", 0) >= 10 and Game.run.floor == 3:
 		gold = 0
 	if Game.has_relic("coin_bag"):
-		gold += 2
+		gold += 20
 	var kind: String = h.get("kind", "normal")
 	var s := 1
 	if h.id == "chosen":
@@ -993,20 +998,20 @@ func monster_atk(idx: int, h) -> int:
 		"wolf":
 			for j in corridor_len:
 				if j != idx and cells[j] != null and cells[j].id == "wolf" and cells[j].hp > 0:
-					a += 1
+					a += 10
 	for j in corridor_len:
 		if j != idx and cells[j] != null and cells[j].id == "lich" and cells[j].hp > 0:
-			a += 2
+			a += 20
 	if c.id in ["wolf", "rat_swarm"] and (_adjacent_has(idx, "pack_leader")):
-		a += 1
+		a += 10
 	if Game.has_relic("blood_ruby"):
-		a += 1
+		a += 10
 	a += int(c.hall_atk)
 	return a
 
 
 func _hero_atk_vs(h: Dictionary, c: Dictionary) -> int:
-	var a: int = h.atk + h.rage
+	var a: int = h.atk + 10 * h.rage
 	var d: Dictionary = Data.cards[c.id]
 	if _has_trait(h, "ratcatcher") and c.id in ["wolf", "rat_swarm"]:
 		a *= 2
@@ -1054,19 +1059,19 @@ func _kill_monster(idx: int, h) -> void:
 	if Game.location_rule() == "catacombs":
 		var n := _next_monster(idx)
 		if n >= 0:
-			cells[n].hall_atk += 1
+			cells[n].hall_atk += 10
 	if Game.has_relic("blood_chalice"):
 		var n := _next_monster(idx)
 		if n >= 0:
-			cells[n].hp += 3
-			cells[n].max_hp += 3
+			cells[n].hp += 30
+			cells[n].max_hp += 30
 	for o in _active_heroes():
 		if "avenger" in o.mods:
-			_heal(o, 3)
+			_heal(o, 30)
 	# Возвращение к жизни
 	if c.id == "zombie" and not zombie_revived.has(str(c.uid)):
 		zombie_revived[str(c.uid)] = true
-		c.hp = 3
+		c.hp = 30
 		events.append({"t": "revive", "cell": idx})
 		return
 	for j in [idx - 1, idx + 1]:
@@ -1171,7 +1176,7 @@ func _end_hall() -> void:
 		h.smoke_used = false
 		h.extra_trait = ""
 		if Game.run.get("master", "") == "alchemist":
-			h.poison = maxi(0, h.poison - 1)
+			h.poison = maxi(0, h.poison - POISON_STEP)
 		if h.trait == "boss_pirate" and hall < HALLS - 1:
 			var stolen = Game.steal_card()
 			if stolen != null:
@@ -1203,7 +1208,7 @@ func _escape(h: Dictionary) -> void:
 	if h.curse > 0:
 		Game.run["pending_curse"] = int(Game.run.get("pending_curse", 0)) + int(h.curse)
 	if h.trait == "ballad":
-		ff["bard_bonus"] = int(ff.get("bard_bonus", 0)) + 3
+		ff["bard_bonus"] = int(ff.get("bard_bonus", 0)) + 30
 	events.append({"t": "escape", "hero": h.uid, "greed": greed})
 
 

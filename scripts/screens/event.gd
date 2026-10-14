@@ -5,8 +5,8 @@ const UI := preload("res://scripts/ui/ui.gd")
 const RunMenus := preload("res://scripts/ui/run_menus.gd")
 
 const COSTS := {
-	"goblin_gambler:play": 10, "mine_collapse:clear": 5, "mirror:break": 8,
-	"witch:potion": 12, "ancient_pact:sign": 10,
+	"goblin_gambler:play": 100, "mine_collapse:clear": 50, "mirror:break": 80,
+	"witch:potion": 120, "ancient_pact:sign": 100,
 }
 
 const ART := {

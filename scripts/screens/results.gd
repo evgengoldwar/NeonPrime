@@ -54,7 +54,7 @@ func _rewards(r: Dictionary, won: bool) -> Control:
 	if won:
 		v.add_child(UI.label("Всё, что осталось в Казне, стало золотом для прокачки карт.", 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	else:
-		v.add_child(UI.label("Казна разграблена. Утешение: 1 золото за каждого убитого героя, и сундук твой.", 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+		v.add_child(UI.label("Казна разграблена. Утешение: 10 золота за каждого убитого героя, и сундук твой.", 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	var chest: String = r.get("reward_chest", "")
 	if chest != "":
 		var ch := UI.hbox(12)

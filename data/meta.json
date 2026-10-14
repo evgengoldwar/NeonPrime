@@ -2,54 +2,45 @@
   "max_level": 8,
   "level_bonus": 0.15,
   "mastery_level": 5,
+  "utility_bonus": {"damage": 5, "gold": 10},
   "copies": {
-    "common": [2, 4, 6, 10, 20, 40, 80],
-    "rare": [1, 2, 3, 5, 10, 20, 40],
-    "epic": [1, 1, 2, 3, 5, 8, 12],
-    "legendary": [1, 1, 1, 2, 2, 3, 4]
+    "common": [2, 3, 5, 8, 12, 20, 30],
+    "rare": [1, 2, 3, 4, 6, 9, 14],
+    "epic": [1, 1, 2, 2, 3, 5, 7],
+    "legendary": [1, 1, 1, 1, 2, 2, 3]
   },
-  "gold_cost": [5, 15, 40, 100, 250, 500, 1000],
+  "gold_cost": [30, 60, 110, 180, 280, 420, 620],
   "upgrade_xp": [4, 10, 25, 50, 100, 200, 400],
   "player_xp": [20, 50, 100, 200, 350, 600, 1000, 1600, 2500, 4000],
-  "player_level_treasury": 1,
-  "deck_size": 8,
+  "player_level_treasury": 10,
   "starter_collection": ["slime", "spikes", "bats", "ghost", "skeleton", "poison_fog", "false_chest", "torch", "cave_in", "dark_ritual", "dark_gust"],
-  "loss_gold_per_kill": 1,
-  "starter_cards": ["slime", "spikes", "bats", "ghost", "skeleton", "false_chest", "torch", "cave_in"],
-  "signature": {
-    "dark_lord": "dark_ritual", "necromancer": "zombie", "goblin_king": "wolf",
-    "alchemist": "poison_ivy", "smith": "crusher", "dragoness": "kobold"
-  },
+  "loss_gold_per_kill": 10,
+  "new_card_chance": 0.5,
   "affinity": {
-    "dark_lord": {"set": "", "text": "Без темы: подходит любая колода, Казна больше"},
-    "necromancer": {"set": "crypt", "text": "Карты Склепа (нежить) +1 уровень в забеге"},
-    "goblin_king": {"set": "lair", "text": "Карты Логова (звери) +1 уровень в забеге"},
-    "alchemist": {"set": "lab", "text": "Карты Лаборатории (яды) +1 уровень в забеге"},
-    "smith": {"set": "forge", "text": "Карты Кузни (механизмы) +1 уровень в забеге"},
-    "dragoness": {"set": "dragon", "text": "Карты Драконьего гнезда (огонь) +1 уровень в забеге"}
+    "dark_lord": {"set": "", "text": "Без темы: в наградах карты всех открытых крыльев"},
+    "necromancer": {"set": "crypt", "text": "В наградах карты Склепа (нежить), у них +1 уровень"},
+    "goblin_king": {"set": "lair", "text": "В наградах карты Логова (звери), у них +1 уровень"},
+    "alchemist": {"set": "lab", "text": "В наградах карты Лаборатории (яды), у них +1 уровень"},
+    "smith": {"set": "forge", "text": "В наградах карты Кузни (механизмы), у них +1 уровень"},
+    "dragoness": {"set": "dragon", "text": "В наградах карты Драконьего гнезда (огонь), у них +1 уровень"}
   },
   "slots": 4,
   "free_chest_hours": 4,
   "chests": {
-    "wood": {"name": "Деревянный сундук", "time": 60, "gold": [10, 20], "cards": 10, "kinds": 2,
-      "rare": [0.3, 1], "epic": [0, 0], "legendary": [0, 0], "gems_per_open": 1},
-    "silver": {"name": "Серебряный сундук", "time": 300, "gold": [25, 45], "cards": 25, "kinds": 3,
-      "rare": [1, 2], "epic": [0.05, 1], "legendary": [0, 0]},
-    "gold": {"name": "Золотой сундук", "time": 1200, "gold": [60, 100], "cards": 50, "kinds": 4,
-      "rare": [1, 5], "epic": [0.3, 1], "legendary": [0.02, 1]},
-    "magic": {"name": "Магический сундук", "time": 3600, "gold": [150, 250], "cards": 100, "kinds": 5,
-      "rare": [1, 10], "epic": [1, 2], "legendary": [0.1, 1]},
-    "legendary": {"name": "Легендарный сундук", "time": 10800, "gold": [200, 300], "cards": 30, "kinds": 3,
-      "rare": [0, 0], "epic": [0, 0], "legendary": [1, 1]}
+    "wood": {"name": "Деревянный сундук", "time": 60, "gold": [100, 200], "cards": 15, "kinds": 2, "rare": [0.3, 1], "epic": [0, 0], "legendary": [0, 0], "gems_per_open": 1},
+    "silver": {"name": "Серебряный сундук", "time": 300, "gold": [250, 450], "cards": 35, "kinds": 3, "rare": [1, 2], "epic": [0.05, 1], "legendary": [0, 0]},
+    "gold": {"name": "Золотой сундук", "time": 1200, "gold": [600, 1000], "cards": 70, "kinds": 4, "rare": [1, 5], "epic": [0.4, 1], "legendary": [0.05, 1]},
+    "magic": {"name": "Магический сундук", "time": 3600, "gold": [1500, 2500], "cards": 120, "kinds": 5, "rare": [1, 10], "epic": [1, 2], "legendary": [0.25, 1]},
+    "legendary": {"name": "Легендарный сундук", "time": 10800, "gold": [2000, 3000], "cards": 40, "kinds": 3, "rare": [0, 0], "epic": [0, 0], "legendary": [1, 1]}
   },
   "chest_order": ["wood", "silver", "gold", "magic", "legendary"],
   "gems": {"win": 5, "boss": 1, "achievement": 10, "daily": 2, "minutes_per_gem": 6},
   "shop": {
-    "free_gold": 10,
+    "free_gold": 100,
     "offers": [
-      {"rarity": "common", "copies": 6, "price": 25},
-      {"rarity": "rare", "copies": 2, "price": 60},
-      {"rarity": "epic", "copies": 1, "price": 200}
+      {"rarity": "common", "copies": 6, "price": 250},
+      {"rarity": "rare", "copies": 2, "price": 600},
+      {"rarity": "epic", "copies": 1, "price": 2000}
     ],
     "chests": [
       {"chest": "silver", "gems": 10},

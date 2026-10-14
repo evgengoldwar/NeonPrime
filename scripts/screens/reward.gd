@@ -127,7 +127,7 @@ func _card_choice(body: VBoxContainer, footer: VBoxContainer, cards: Array) -> v
 	if Game.can_reroll():
 		row2.add_child(UI.button("Перебросить", _reroll, 24, 64))
 	row2.add_child(UI.button("Колода %d" % Game.run.deck.size(), func(): RunMenus.deck(self), 24, 64))
-	row2.add_child(UI.button("Пропустить +3", _skip, 24, 64))
+	row2.add_child(UI.button("Пропустить +30", _skip, 24, 64))
 	footer.add_child(row2)
 
 
@@ -148,7 +148,7 @@ func _take_card() -> void:
 
 
 func _skip() -> void:
-	Game.add_gold(3)
+	Game.add_gold(30)
 	Sfx.play("coin")
 	_done()
 

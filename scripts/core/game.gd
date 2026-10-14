@@ -15,7 +15,7 @@ const DAILY_MODS := {
 	"hp10": "Все герои +10% HP",
 	"dark_first": "+1 Тьма в первом зале каждого боя",
 	"cheap_shop": "Цены в магазине −20%",
-	"greedy": "Все герои +2 Жадности",
+	"greedy": "Все герои +20 Жадности",
 }
 
 var meta := {}
@@ -189,20 +189,12 @@ func new_run(master_id: String, notoriety: int, opts: Dictionary = {}) -> void:
 		"stolen": [], "best_combo": 0, "kills_count": 0, "path": [], "battles_done": 0,
 		"mika_stole": false, "screen": "location", "unlocked_now": [], "chosen_done": false,
 	}
-	var treasury: int = m.treasury + 3 * upgrade_level("deep_cellars") + Progress.treasury_bonus()
+	var treasury: int = m.treasury + 30 * upgrade_level("deep_cellars") + Progress.treasury_bonus()
 	if notoriety >= 4:
-		treasury -= 5
+		treasury -= 50
 	run.treasury = treasury
-	# Стартовая колода забега: боевая колода игрока + 2 копии фирменной карты Хозяина.
-	var start_ids: Array = Progress.deck(master_id).duplicate()
-	if opts.get("daily", false):
-		start_ids = m.deck.duplicate()
-	else:
-		var sig: String = Data.prog.signature.get(master_id, "")
-		if sig != "":
-			start_ids.append(sig)
-			start_ids.append(sig)
-	for id in start_ids:
+	# Стартовая колода забега — колода Хозяина. Уровни карт берутся из коллекции.
+	for id in m.deck:
 		var lvl := card_level(id)
 		run.deck.append({"uid": next_uid(), "id": id, "up": mastery_up(id, lvl), "lvl": lvl})
 	if upgrade_level("dark_forge") > 0:
@@ -277,7 +269,7 @@ func add_relic(id: String) -> void:
 		return
 	run.relics.append(id)
 	if id == "old_key":
-		add_gold(10)
+		add_gold(100)
 
 
 func add_card(id: String, up: bool = false) -> void:
@@ -373,7 +365,7 @@ func shop_price(base: int) -> int:
 
 
 func removal_price() -> int:
-	return shop_price(10 + 5 * int(run.removal_count))
+	return shop_price(100 + 50 * int(run.removal_count))
 
 
 # ================================================================ этажи и карта
@@ -527,7 +519,7 @@ func enter_node(id: int) -> void:
 			run.screen = "event"
 		"treasure":
 			if rchance(0.5):
-				var g := rint(8, 15)
+				var g := rint(80, 150)
 				add_gold(g)
 				pending = {"kind": "treasure", "gold": g, "relic": ""}
 			else:
@@ -587,10 +579,10 @@ func start_tutorial() -> void:
 	run.screen = "battle"
 	var h := make_hero("warrior", 1, 0, {})
 	h.name = "Воин-новобранец"
-	h.hp = 20
-	h.max_hp = 20
+	h.hp = 200
+	h.max_hp = 200
 	h.trait = ""
-	h.greed = 5
+	h.greed = 50
 	battle = load(BATTLE_SCRIPT).new()
 	battle.setup([h], [], {"tutorial": true, "node_type": "tutorial",
 		"tutorial_hands": [["spikes"], ["slime", "spikes"], ["slime", "ghost", "spikes"]]})
@@ -659,7 +651,7 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 	if kind == "class":
 		hp *= Data.FLOOR_MULT[f - 1]
 		greed *= Data.FLOOR_MULT[f - 1]
-		atk += f - 1
+		atk += 10 * (f - 1)
 		hp *= 1.0 + 0.05 * row
 		kind = "normal"
 	elif kind == "local":
@@ -673,7 +665,7 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 	if run.get("daily_mod", "") == "hp10":
 		hp *= 1.1
 	if nt >= 9:
-		atk += 1
+		atk += 10
 	var mods: Array = opts.get("mods", []).duplicate()
 	if opts.get("boss", false) and nt >= 6 and id != "chosen":
 		mods.append(rpick(["armored", "fearless", "antidote", "fireproof", "avenger"]))
@@ -687,10 +679,10 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 	if id == "chosen":
 		h.greed = maxi(1, int(run.treasury))
 	if id == "mage" and has_collection("mage"):
-		h.hp -= 2
+		h.hp -= 20
 	h.greed += int(run.floor_flags.get("greed_bonus", 0))
 	if run.get("daily_mod", "") == "greedy":
-		h.greed += 2
+		h.greed += 20
 	h.hp += int(run.floor_flags.get("bard_bonus", 0))
 	if int(run.next_hero_hp_mod) != 0:
 		h.hp += int(run.next_hero_hp_mod)
@@ -699,7 +691,7 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 		h.hp -= int(run.pending_curse)
 		run.pending_curse = 0
 	if id == "warrior" and run.get("squire_bonus", false):
-		h.atk += 3
+		h.atk += 30
 		run.squire_bonus = false
 	h.hp = maxi(1, h.hp)
 	h["max_hp"] = h.hp
@@ -739,20 +731,31 @@ func battle_finished() -> void:
 
 # ================================================================ награды
 
+## Какие карты предлагаются в забеге: базовые, карты крыла этого Хозяина (у Тёмного
+## владыки — всех открытых крыльев) и карты текущей локации. Только найденные в коллекции.
+func card_in_pool(c: Dictionary, theme: String, daily: bool) -> bool:
+	var s: String = c.set
+	if s == "special":
+		return false
+	if s.begins_with("loc_"):
+		if s != "loc_" + str(run.location):
+			return false
+	elif s != "base":
+		if theme != "" and s != theme:
+			return false
+		if not wing_unlocked(s) and not daily:
+			return false
+	return daily or Progress.owned(c.id)
+
+
 func card_pool(include_legendary: bool) -> Array:
 	var out := []
+	var daily: bool = run.get("daily", false)
+	var theme: String = Data.prog.affinity.get(run.get("master", ""), {}).get("set", "")
 	for c in Data.card_list:
-		var s: String = c.set
-		var ok := false
-		if s == "base":
-			ok = true
-		elif s.begins_with("loc_"):
-			ok = s == "loc_" + str(run.location)
-		elif s != "special":
-			ok = Progress.owned(c.id) or run.get("daily", false)
-		if s == "base" and not run.get("daily", false):
-			ok = Progress.owned(c.id)
-		if ok and (include_legendary or c.rarity != "legendary"):
+		if not card_in_pool(c, theme, daily):
+			continue
+		if include_legendary or c.rarity != "legendary":
 			out.append(c.id)
 	return out
 
@@ -844,7 +847,7 @@ func gen_shop() -> Dictionary:
 	for i in 2:
 		var r := random_relic(relics.map(func(x): return x.id))
 		if r != "":
-			relics.append({"id": r, "price": shop_price(rint(20, 30)), "sold": false})
+			relics.append({"id": r, "price": shop_price(rint(200, 300)), "sold": false})
 	return {"kind": "shop", "cards": items, "relics": relics, "removed": false}
 
 
@@ -854,43 +857,43 @@ func resolve_event(event_id: String, option: String) -> String:
 	var text := ""
 	match event_id + ":" + option:
 		"lost_knight:release":
-			run.next_hero_hp_mod = int(run.next_hero_hp_mod) - 5
-			text = "Рыцарёнок убегает и рассказывает всем, как тут страшно. Следующий герой −5 HP."
+			run.next_hero_hp_mod = int(run.next_hero_hp_mod) - 50
+			text = "Рыцарёнок убегает и рассказывает всем, как тут страшно. Следующий герой −50 HP."
 		"lost_knight:lock":
-			add_gold(10)
+			add_gold(100)
 			run.father_in = 2
-			text = "+10 золота выкупа. Через 2 боя за сыном придёт отец."
+			text = "+100 золота выкупа. Через 2 боя за сыном придёт отец."
 		"lost_knight:servant":
 			add_card("coward_squire")
 			text = "Новый слуга: Трусливый оруженосец добавлен в колоду."
 		"goblin_gambler:play":
 			if rchance(0.5):
-				add_gold(10)
-				text = "Шестёрки! Ты выиграл 10 золота."
+				add_gold(100)
+				text = "Шестёрки! Ты выиграл 100 золота."
 			else:
-				add_gold(-10)
-				text = "Единицы... Гоблин забирает 10 золота."
+				add_gold(-100)
+				text = "Единицы... Гоблин забирает 100 золота."
 		"mine_collapse:clear":
-			add_gold(-5)
-			text = "Камни убраны. −5 золота."
+			add_gold(-50)
+			text = "Камни убраны. −50 золота."
 		"mine_collapse:leave":
 			add_card("debris")
 			add_card("debris")
 			text = "В колоде появились 2 карты Обломки."
 		"mirror:break":
-			add_gold(-8)
+			add_gold(-80)
 			var r := random_relic()
 			if r != "":
 				add_relic(r)
-				text = "Осколки складываются в реликвию: " + Data.relics[r].name + ". −8 золота."
+				text = "Осколки складываются в реликвию: " + Data.relics[r].name + ". −80 золота."
 			else:
-				text = "Зеркало разбито. −8 золота."
+				text = "Зеркало разбито. −80 золота."
 		"empty_throne:sit":
 			add_card("usurper_crown")
-			run.floor_flags["greed_bonus"] = int(run.floor_flags.get("greed_bonus", 0)) + 2
+			run.floor_flags["greed_bonus"] = int(run.floor_flags.get("greed_bonus", 0)) + 20
 			text = "Корона узурпатора твоя. Герои этажа стали жаднее."
 		"witch:potion":
-			add_gold(-12)
+			add_gold(-120)
 			var ups := upgradable_cards()
 			shuffle(ups)
 			var names := []
@@ -902,10 +905,10 @@ func resolve_event(event_id: String, option: String) -> String:
 			add_card("rat_swarm")
 			text = "Крысы остаются с тобой. +1 Стая крыс."
 		"rat_feast:chase":
-			add_gold(4)
-			text = "Под крысами нашлось 4 золота."
+			add_gold(40)
+			text = "Под крысами нашлось 40 золота."
 		"ancient_pact:sign":
-			add_gold(-10)
+			add_gold(-100)
 			run.floor_flags["pact_dark"] = int(run.floor_flags.get("pact_dark", 0)) + 1
 			text = "Договор подписан кровью. +1 Тьма в каждом зале до конца этажа."
 		"ancient_pact:burn":

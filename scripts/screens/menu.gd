@@ -5,7 +5,7 @@ extends Control
 const UI := preload("res://scripts/ui/ui.gd")
 const TABS := [
 	["shop", "Магазин", "icons/tab_shop"],
-	["deck", "Колода", "icons/tab_deck"],
+	["deck", "Карты", "icons/tab_deck"],
 	["home", "Бой", "icons/tab_battle"],
 	["castle", "Замок", "icons/tab_castle"],
 	["trophies", "Трофеи", "icons/tab_trophy"],
@@ -19,7 +19,6 @@ var _content: Control
 var _tabbar: HBoxContainer
 var _top_sig := ""
 var _timers := []          # [{"label": Label, "kind": String, "slot": int, "state": String}]
-var _swap_id := ""         # карта, которую кладём в колоду (ждём выбора слота)
 var _master_idx := 0
 
 
@@ -118,7 +117,6 @@ func _build_tabs() -> void:
 
 
 func _on_tab(id: String) -> void:
-	_swap_id = ""
 	_show(id)
 
 
@@ -264,24 +262,20 @@ func _master_panel() -> Control:
 				wing = w
 		v.add_child(UI.label("Закрыт. Открой крыло «%s» во вкладке Замок (%d Душ)." % [wing.get("name", "?"), int(wing.get("cost", 0))], 20, UI.RED, HORIZONTAL_ALIGNMENT_CENTER))
 	v.add_child(UI.label(m.passive_text, 20, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	# Фирменная карта и тема Хозяина
-	var info := UI.hbox(10)
-	var sig: String = Data.prog.signature.get(m.id, "")
-	if sig != "":
-		var mc := UI.mini_card({"id": sig, "lvl": Game.card_level_for(sig, m.id)}, 96, 128)
+	# Колода Хозяина: с ней начинается каждый забег.
+	v.add_child(UI.label("Колода Хозяина (уровни из коллекции):", 18, UI.GOLD))
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for id in m.deck:
+		var mc := UI.mini_card({"id": id, "lvl": Game.card_level_for(id, m.id)}, 116, 140)
 		mc.mouse_filter = Control.MOUSE_FILTER_STOP
-		mc.gui_input.connect(_tap_card.bind(sig))
-		info.add_child(mc)
-	var iv := UI.vbox(4)
-	iv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if sig != "":
-		iv.add_child(UI.label("Фирменная карта: %s ×2" % Data.card_name(sig), 20, UI.GOLD))
-		iv.add_child(UI.label(Data.card_text(sig, false, Game.card_level_for(sig, m.id)), 18, UI.TEXT))
-		iv.add_child(UI.label("Всегда добавляется в колоду забега этого Хозяина", 16, UI.DIM))
-	iv.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 18, UI.GREEN))
-	iv.add_child(UI.stat("coin", "Казна %d (+%d за уровень игрока)" % [int(m.treasury), Progress.treasury_bonus()], UI.GOLD, 18))
-	info.add_child(iv)
-	v.add_child(info)
+		mc.gui_input.connect(_tap_card.bind(id))
+		grid.add_child(mc)
+	v.add_child(UI.center(grid))
+	v.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 18, UI.GREEN))
+	v.add_child(UI.stat("coin", "Казна %d (+%d за уровень игрока)" % [int(m.treasury), Progress.treasury_bonus()], UI.GOLD, 18))
 	v.add_child(_notoriety_box())
 	return p
 
@@ -491,82 +485,47 @@ func _upgradable_count() -> int:
 func _deck() -> void:
 	var body := _page()
 	var head := UI.hbox()
-	var t := _section("Колода: " + Data.master_list[_master_idx].name)
+	var t := _section("Карты: найдено %d из %d" % [Game.meta.collection.size(), Progress.collectible_ids().size()])
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
-	head.add_child(UI.label("Средняя Тьма: %.1f" % Progress.avg_cost(), 20, UI.DARK, HORIZONTAL_ALIGNMENT_RIGHT, false))
+	var up := _upgradable_count()
+	if up > 0:
+		head.add_child(UI.label("Можно улучшить: %d" % up, 20, UI.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, false))
 	body.add_child(head)
-	if _swap_id != "":
-		var bp := UI.framed("popup", 10)
-		var bh := UI.hbox(10)
-		bp.add_child(bh)
-		bh.add_child(UI.mini_card({"id": _swap_id, "lvl": Progress.level_of(_swap_id)}, 96, 128))
-		var bl := UI.label("Коснись карты колоды, которую заменит «%s»" % Data.card_name(_swap_id), 22, UI.GOLD)
-		bl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		bh.add_child(bl)
-		var cancel := UI.button("Отмена", _cancel_swap, 20, 64)
-		cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
-		cancel.custom_minimum_size = Vector2(130, 64)
-		bh.add_child(cancel)
-		body.add_child(bp)
-	var dg := _grid()
-	for i in Progress.deck().size():
-		dg.add_child(_coll_card(Progress.deck()[i], i))
-	body.add_child(dg)
-	var m: Dictionary = Data.master_list[_master_idx]
-	var sig: String = Data.prog.signature.get(m.id, "")
-	if sig != "":
-		body.add_child(UI.label("В забег за Хозяина «%s» к колоде добавятся 2 карты «%s»." % [m.name, Data.card_name(sig)], 18, UI.DIM))
-	var owned := []
-	for id in Game.meta.collection.keys():
-		if not Progress.in_deck(id):
-			owned.append(id)
-	owned.sort_custom(_card_order)
-	body.add_child(_section("Коллекция: найдено %d из %d" % [Game.meta.collection.size(), Progress.collectible_ids().size()]))
-	if owned.is_empty():
-		body.add_child(UI.label("Все найденные карты уже в колоде. Новые карты выпадают из сундуков.", 18, UI.DIM))
-	var g := _grid()
-	for id in owned:
-		g.add_child(_coll_card(id, -1))
-	body.add_child(g)
-	var unknown := []
-	var locked := []
-	for id in Progress.collectible_ids():
-		if Progress.owned(id):
-			continue
-		if id in Progress.droppable_ids():
-			unknown.append(id)
-		else:
-			locked.append(id)
-	if not unknown.is_empty():
-		unknown.sort_custom(_card_order)
-		body.add_child(_section("Ещё не найдены: %d" % unknown.size(), UI.DIM))
-		var ug := _grid()
-		for id in unknown:
-			ug.add_child(_hidden_card(id, false))
-		body.add_child(ug)
-	if not locked.is_empty():
-		body.add_child(_section("Закрыто крыльями Замка: %d" % locked.size(), UI.DIM))
-		body.add_child(UI.label("Эти карты не выпадают из сундуков, пока не откроешь их крыло во вкладке Замок за Души. Открытое крыло даёт ещё и нового Хозяина.", 18, UI.DIM))
-		for w in Data.wings:
-			var ids := []
-			for id in locked:
-				if Data.cards[id].set == w.id:
-					ids.append(id)
-			if ids.is_empty():
-				continue
-			var wl := UI.label("Крыло «%s» · Хозяин %s · %d Душ" % [w.name, Data.masters[w.master].name, int(w.cost)], 22, UI.SOUL)
-			body.add_child(wl)
-			var lg := _grid()
-			for id in ids:
-				lg.add_child(_hidden_card(id, true))
-			body.add_child(lg)
-	var loc := 0
+	body.add_child(UI.label("Колоду собирать не нужно: каждый Хозяин приходит со своей колодой, а награды в забеге зависят от Хозяина и локации. Здесь карты только прокачиваются — уровень действует везде.", 18, UI.DIM))
+	_group(body, "Базовые · у всех Хозяев", "", _ids_of_set("base"), false)
+	for w in Data.wings:
+		var open := Game.wing_unlocked(w.id)
+		var title := "Крыло «%s» · Хозяин %s" % [w.name, Data.masters[w.master].name]
+		var note := "" if open else "Закрыто: открой крыло во вкладке Замок за %d Душ" % int(w.cost)
+		_group(body, title, note, _ids_of_set(w.id), not open)
+	for l in Data.location_list:
+		var ids := _ids_of_set("loc_" + str(l.id))
+		if not ids.is_empty():
+			_group(body, "Локация «%s» · только в ней" % l.name, "", ids, false)
+
+
+func _ids_of_set(set_id: String) -> Array:
+	var out := []
 	for c in Data.card_list:
-		if str(c.set).begins_with("loc_"):
-			loc += 1
-	body.add_child(UI.label("Ещё %d карт локаций в коллекцию не входят: их предлагают только в забеге, в своей локации." % loc, 16, UI.DIM))
+		if c.set == set_id:
+			out.append(c.id)
+	out.sort_custom(_card_order)
+	return out
+
+
+func _group(body: VBoxContainer, title: String, note: String, ids: Array, locked: bool) -> void:
+	var found := 0
+	for id in ids:
+		if Progress.owned(id):
+			found += 1
+	body.add_child(_section("%s  %d/%d" % [title, found, ids.size()], UI.SOUL if locked else UI.GOLD))
+	if note != "":
+		body.add_child(UI.label(note, 18, UI.DIM))
+	var g := _grid()
+	for id in ids:
+		g.add_child(_coll_card(id) if Progress.owned(id) else _hidden_card(id, locked))
+	body.add_child(g)
 
 
 func _grid() -> GridContainer:
@@ -590,13 +549,10 @@ func _card_order(a: String, b: String) -> bool:
 
 
 ## Карта коллекции: мини-карта + полоска копий до следующего уровня.
-func _coll_card(id: String, deck_slot: int) -> Control:
+func _coll_card(id: String) -> Control:
 	var v := UI.vbox(2)
 	var lvl := Progress.level_of(id)
-	var mc := UI.mini_card({"id": id, "lvl": lvl}, 160, 176)
-	if _swap_id != "" and deck_slot >= 0:
-		mc.add_theme_stylebox_override("panel", UI.frame("card_selected", 6))
-	v.add_child(mc)
+	v.add_child(UI.mini_card({"id": id, "lvl": lvl}, 160, 176))
 	var n := Progress.need(id)
 	if n < 0:
 		v.add_child(UI.progress_bar(1, 1, 160, Color("#c47b25"), "Ур.%d · МАКС" % lvl))
@@ -608,7 +564,7 @@ func _coll_card(id: String, deck_slot: int) -> Control:
 		v.add_child(UI.progress_bar(Progress.copies(id), n, 160, UI.GREEN if ready else Color("#2a6fb8"), txt))
 	UI.ignore_mouse(v)
 	v.mouse_filter = Control.MOUSE_FILTER_STOP
-	v.gui_input.connect(_coll_input.bind(id, deck_slot))
+	v.gui_input.connect(_tap_card.bind(id))
 	return v
 
 
@@ -624,29 +580,11 @@ func _hidden_card(id: String, locked: bool) -> Control:
 		lh.add_child(UI.label("Закрыто", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER, false))
 		v.add_child(lh)
 	else:
-		v.add_child(UI.label(Data.RARITY_NAMES.get(Data.cards[id].rarity, ""), 16, Data.RARITY_COLORS.get(Data.cards[id].rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER, false))
+		v.add_child(UI.label("Не найдена", 16, Data.RARITY_COLORS.get(Data.cards[id].rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER, false))
 	UI.ignore_mouse(v)
 	v.mouse_filter = Control.MOUSE_FILTER_STOP
-	v.gui_input.connect(_hidden_input.bind(id))
+	v.gui_input.connect(_tap_card.bind(id))
 	return v
-
-
-func _hidden_input(ev: InputEvent, id: String) -> void:
-	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-		UI.card_popup(self, id, false)
-
-
-func _coll_input(ev: InputEvent, id: String, deck_slot: int) -> void:
-	if not (ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT):
-		return
-	if _swap_id != "" and deck_slot >= 0:
-		Progress.set_deck_slot(deck_slot, _swap_id)
-		Sfx.play("place")
-		Game.main.toast("В колоде: " + Data.card_name(_swap_id))
-		_swap_id = ""
-		_show("deck")
-		return
-	card_detail(id)
 
 
 func _tap_card(ev: InputEvent, id: String) -> void:
@@ -654,12 +592,7 @@ func _tap_card(ev: InputEvent, id: String) -> void:
 		card_detail(id)
 
 
-func _cancel_swap() -> void:
-	_swap_id = ""
-	_show("deck")
-
-
-## Окно карты: уровень, копии, что даст улучшение, кнопки «Улучшить» и «В колоду».
+## Окно карты: уровень, копии, что даст улучшение, кнопка «Улучшить».
 func card_detail(id: String) -> void:
 	var lvl := maxi(1, Progress.level_of(id))
 	var p := UI.popup(self, "", "Закрыть")
@@ -669,7 +602,10 @@ func card_detail(id: String) -> void:
 	p.box.add_child(UI.label("%s · Уровень %d из %d" % [Data.RARITY_NAMES.get(c.rarity, ""), lvl, Progress.max_level()], 22, Data.RARITY_COLORS.get(c.rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER))
 	p.box.add_child(UI.label(_where_used(id), 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	if not Progress.owned(id):
-		p.box.add_child(UI.label("Карта ещё не найдена. Выбей её из сундука.", 20, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		var why := "Карта ещё не найдена. Выбей её из сундука."
+		if not id in Progress.droppable_ids():
+			why = "Сначала открой её крыло во вкладке Замок — потом она начнёт выпадать из сундуков."
+		p.box.add_child(UI.label(why, 20, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 		return
 	var mastery := int(Data.prog.get("mastery_level", 5))
 	if c.has("up") and Data.is_utility(id):
@@ -678,17 +614,14 @@ func card_detail(id: String) -> void:
 	var n := Progress.need(id)
 	if n > 0:
 		p.box.add_child(UI.center(UI.progress_bar(Progress.copies(id), n, 520, UI.GREEN if Progress.copies(id) >= n else Color("#2a6fb8"), "Копии: %d/%d" % [Progress.copies(id), n], 32)))
-		var changes := Data.level_changes(id, lvl, lvl + 1)
 		var cp := UI.framed("panel_dark", 8)
 		var cv := UI.vbox(2)
 		cp.add_child(cv)
 		cv.add_child(UI.label("Уровень %d:" % (lvl + 1), 18, UI.DIM))
-		for line in changes:
+		for line in Data.level_changes(id, lvl, lvl + 1):
 			cv.add_child(UI.label(line, 24, UI.GREEN))
 		if lvl + 1 == mastery and c.has("up") and Data.is_utility(id):
 			cv.add_child(UI.label("Мастерство: в забеге карта сразу «+»", 24, UI.GOLD))
-		elif changes.is_empty():
-			cv.add_child(UI.label("Числа этой карты не растут — копите до %d уровня ради «+»." % mastery, 20, UI.TEXT))
 		cv.add_child(UI.label("Опыт игрока +%d" % int(Data.prog.upgrade_xp[lvl - 1]), 18, UI.SOUL))
 		p.box.add_child(cp)
 		var cost := Progress.gold_cost(id)
@@ -703,21 +636,21 @@ func card_detail(id: String) -> void:
 		p.box.add_child(ub)
 	else:
 		p.box.add_child(UI.label("Максимальный уровень!", 24, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-	if not Progress.in_deck(id):
-		var db := UI.button("В колоду", _begin_swap.bind(id, ov), 24, 68)
-		UI.tint_button(db, UI.ACCENT)
-		p.box.add_child(db)
 
 
+## Где карта встречается в забегах.
 func _where_used(id: String) -> String:
 	var s: String = Data.cards[id].set
 	if s == "base":
-		return "Базовая карта: работает у всех Хозяев"
+		return "Базовая: в наградах у всех Хозяев"
+	if s.begins_with("loc_"):
+		var loc: Dictionary = Data.locations.get(s.substr(4), {})
+		return "Локация «%s»: предлагается только там, у любого Хозяина" % loc.get("name", "?")
 	for m in Data.master_list:
 		if Data.prog.affinity.get(m.id, {}).get("set", "") == s:
 			for w in Data.wings:
 				if w.id == s:
-					return "Крыло «%s»: у Хозяина «%s» +1 уровень в забеге" % [w.name, m.name]
+					return "Крыло «%s»: в наградах у Хозяина «%s» (+1 уровень) и у Тёмного владыки" % [w.name, m.name]
 	return ""
 
 
@@ -730,12 +663,6 @@ func _do_upgrade(id: String, ov: Control) -> void:
 	_build_top()
 	_show(tab)
 	card_detail(id)
-
-
-func _begin_swap(id: String, ov: Control) -> void:
-	ov.queue_free()
-	_swap_id = id
-	_show("deck")
 
 
 # ================================================================ вкладка «Магазин»

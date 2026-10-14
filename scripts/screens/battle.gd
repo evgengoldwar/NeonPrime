@@ -268,7 +268,7 @@ func _hero_panel(h: Dictionary) -> Control:
 	bar_box.add_child(hp_l)
 	v.add_child(bar_box)
 	var stats := UI.hbox(12)
-	stats.add_child(UI.stat("sword", str(h.atk + h.rage), UI.TEXT, 24))
+	stats.add_child(UI.stat("sword", str(h.atk + 10 * h.rage), UI.TEXT, 24))
 	stats.add_child(UI.stat("greed", str(h.greed), UI.GOLD, 24))
 	if h.armor > 0:
 		stats.add_child(UI.stat("armor", str(h.armor), UI.SOUL, 24))
@@ -596,7 +596,7 @@ func _show_hero(uid: int) -> void:
 		return
 	var d: Dictionary = Data.hero_def(h.id)
 	var lines := []
-	lines.append("HP %d/%d · Атака %d · Жадность %d · Броня %d" % [maxi(0, h.hp), h.max_hp, h.atk + h.rage, h.greed, h.armor])
+	lines.append("HP %d/%d · Атака %d · Жадность %d · Броня %d" % [maxi(0, h.hp), h.max_hp, h.atk + 10 * h.rage, h.greed, h.armor])
 	lines.append("Черта: " + d.get("trait_text", ""))
 	if d.has("phase2_text"):
 		lines.append("Фаза 2 (HP < 50%): " + d.phase2_text)

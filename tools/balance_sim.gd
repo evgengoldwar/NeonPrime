@@ -1,7 +1,7 @@
 extends Node
 ## Балансный прогон: бот играет забеги при разных уровнях карт коллекции и печатает
 ## процент побед, этаж, остаток Казны (= золото для прокачки) и Души.
-## Запуск: godot --headless --path . res://tools/balance_sim.tscn -- levels=1,4,8 runs=6 notoriety=0 deck=master
+## Запуск: godot --headless --path . res://tools/balance_sim.tscn -- levels=1,4,8 runs=6 notoriety=0
 ## Не запускайте два прогона одновременно: они пишут в одно сохранение.
 ## Бот слабее человека: смотрите на разницу между уровнями, а не на абсолютные числа.
 
@@ -9,16 +9,14 @@ const Smoke := preload("res://tools/smoke_test.gd")
 
 var main
 var bot
-var deck_mode := "master"   # master — колоды Хозяев по умолчанию, starter — у всех стартовая
 
 
 func _ready() -> void:
-	var args := {"levels": "1,4,8", "runs": "4", "notoriety": "0", "masters": "", "deck": "master"}
+	var args := {"levels": "1,4,8", "runs": "4", "notoriety": "0", "masters": ""}
 	for a in OS.get_cmdline_user_args():
 		var kv: PackedStringArray = a.split("=")
 		if kv.size() == 2:
 			args[kv[0]] = kv[1]
-	deck_mode = args.deck
 	main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(main)
 	await get_tree().process_frame
@@ -71,7 +69,7 @@ func _ready() -> void:
 	get_tree().quit()
 
 
-## Все крылья открыты, все карты коллекции на уровне lvl, колода — стартовая.
+## Все крылья открыты, все карты коллекции на уровне lvl.
 func _setup(lvl: int) -> void:
 	Game.clear_run()
 	Game.meta.tutorial_done = true
@@ -80,8 +78,4 @@ func _setup(lvl: int) -> void:
 			Game.meta.wings.append(w.id)
 	for id in Progress.collectible_ids():
 		Game.meta.collection[id] = {"lvl": lvl, "copies": 0}
-	Game.meta.decks = {}
-	if deck_mode == "starter":
-		for m in Data.master_list:
-			Game.meta.decks[m.id] = Data.prog.starter_cards.duplicate()
 	Game.meta.plevel = 1

@@ -223,16 +223,9 @@ func _meta_test() -> void:
 			up += 1
 	main.screen._show("deck")
 	await _frames(2)
-	var extra := ""
-	for id in Game.meta.collection.keys():
-		if not Progress.in_deck(id):
-			extra = id
-	if extra != "":
-		main.screen.card_detail(extra)
-		main.screen._swap_id = extra
-		main.screen._show("deck")
-		main.screen._coll_input(_click(), Progress.deck()[0], 0)
-		assert(Progress.deck()[0] == extra, "замена карты в колоде")
+	var some: String = Game.meta.collection.keys()[0]
+	main.screen.card_detail(some)
+	await _frames(1)
 	assert(Progress.grant_chest("silver") >= 0)
 	var slot := -1
 	for i in Game.meta.chests.size():
@@ -245,7 +238,7 @@ func _meta_test() -> void:
 	main.screen._shop()
 	Progress.buy_offer(0)
 	Progress.claim_gift()
-	print("SMOKE: коллекция %d карт, улучшений %d, уровень игрока %d, колода %s" % [Game.meta.collection.size(), up, int(Game.meta.plevel), str(Progress.deck())])
+	print("SMOKE: коллекция %d карт, улучшений %d, уровень игрока %d" % [Game.meta.collection.size(), up, int(Game.meta.plevel)])
 	# Уровни должны попадать в забег
 	Game.clear_run()
 	Game.new_run("dark_lord", 0)

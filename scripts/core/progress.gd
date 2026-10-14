@@ -26,7 +26,7 @@ func now() -> int:
 func ensure() -> void:
 	var m: Dictionary = Game.meta
 	var defaults := {
-		"gold": 0, "gems": 0, "xp": 0, "plevel": 1, "collection": {}, "deck": [], "decks": {},
+		"gold": 0, "gems": 0, "xp": 0, "plevel": 1, "collection": {},
 		"chests": [], "free_chest_at": 0, "shop": {}, "master_pick": "dark_lord", "notoriety_pick": 0,
 	}
 	for k in defaults.keys():
@@ -36,12 +36,9 @@ func ensure() -> void:
 		# Первый сундук — сразу готов, чтобы новичок увидел, как всё работает.
 		m.chests = [{"type": "wood", "unlock_at": 1}]
 	# Все обычные базовые карты есть с самого начала: из них собирают первую колоду.
-	for id in P().get("starter_collection", P().starter_cards):
+	for id in P().get("starter_collection", []):
 		if not m.collection.has(id):
 			m.collection[id] = {"lvl": 1, "copies": 0}
-	# Старое сохранение с одной колодой: она становится колодой выбранного Хозяина.
-	if m.decks.is_empty() and m.deck.size() == int(P().deck_size):
-		m.decks[str(m.master_pick)] = m.deck.duplicate()
 	while m.chests.size() < int(P().slots):
 		m.chests.append(null)
 	for w in m.get("wings", []):
@@ -55,22 +52,21 @@ func save() -> void:
 
 # ================================================================ коллекция
 
-## Карты, которые вообще можно собирать (без особых и местных карт локаций).
+## Карты, которые можно собирать и прокачивать: все, кроме особых.
 func collectible_ids() -> Array:
 	var out := []
 	for c in Data.card_list:
-		var s: String = c.set
-		if s != "special" and not s.begins_with("loc_"):
+		if c.set != "special":
 			out.append(c.id)
 	return out
 
 
-## Карты, которые могут выпасть из сундуков: базовые и из открытых крыльев Замка.
+## Карты, которые могут выпасть из сундуков: базовые, карты локаций и открытых крыльев Замка.
 func droppable_ids() -> Array:
 	var out := []
 	for id in collectible_ids():
 		var s: String = Data.cards[id].set
-		if s == "base" or s in Game.meta.get("wings", []):
+		if s == "base" or s.begins_with("loc_") or s in Game.meta.get("wings", []):
 			out.append(id)
 	return out
 
@@ -146,7 +142,7 @@ func on_wing(wing_id: String, notify: bool = true) -> void:
 	for m in Data.master_list:
 		if m.unlock != wing_id:
 			continue
-		var ids := [P().signature.get(m.id, "")]
+		var ids := []
 		for id in m.deck:
 			if Data.cards[id].set == wing_id and not id in ids:
 				ids.append(id)
@@ -165,58 +161,6 @@ func has_rarity(rarity: String) -> bool:
 		if Data.cards[id].rarity == rarity:
 			return true
 	return false
-
-
-# ================================================================ колода
-
-## У каждого Хозяина своя боевая колода: Некроманту — нежить, Алхимику — яды.
-func deck(master_id: String = "") -> Array:
-	if master_id == "":
-		master_id = str(Game.meta.master_pick)
-	var decks: Dictionary = Game.meta.decks
-	if not decks.has(master_id) or decks[master_id].size() != int(P().deck_size):
-		decks[master_id] = default_deck(master_id)
-	return decks[master_id]
-
-
-## Колода по умолчанию: найденные карты из стартовой колоды Хозяина, остальное — стартовые.
-func default_deck(master_id: String) -> Array:
-	var size := int(P().deck_size)
-	var out := []
-	var sig: String = P().signature.get(master_id, "")
-	var src: Array = Data.masters.get(master_id, {}).get("deck", []).duplicate()
-	src.append_array(P().starter_cards)
-	src.append_array(P().get("starter_collection", []))
-	for id in src:
-		if out.size() < size and owned(id) and id != sig and not id in out:
-			out.append(id)
-	for id in Game.meta.collection.keys():
-		if out.size() < size and not id in out and id != sig:
-			out.append(id)
-	return out
-
-
-func in_deck(id: String) -> bool:
-	return id in deck()
-
-
-func set_deck_slot(i: int, id: String) -> void:
-	var d := deck()
-	if not owned(id) or i < 0 or i >= d.size():
-		return
-	var j: int = d.find(id)
-	if j >= 0:
-		d[j] = d[i]
-	d[i] = id
-	save()
-
-
-func avg_cost() -> float:
-	var d := deck()
-	var total := 0
-	for id in d:
-		total += int(Data.cards[id].cost)
-	return float(total) / maxi(1, d.size())
 
 
 # ================================================================ уровень игрока
@@ -291,11 +235,19 @@ func gen_chest(type: String) -> Dictionary:
 	return {"type": type, "gold": gold, "cards": stacks}
 
 
+## Случайная карта редкости для сундука. Карты максимального уровня не выпадают,
+## а ещё не найденные выпадают чаще (защита от невезения в конце коллекции).
 func _pick_card(rarity: String, exclude: Array) -> String:
 	var cand := []
+	var fresh := []
 	for id in droppable_ids():
-		if Data.cards[id].rarity == rarity and not id in exclude:
-			cand.append(id)
+		if Data.cards[id].rarity != rarity or id in exclude or level_of(id) >= max_level():
+			continue
+		cand.append(id)
+		if not owned(id):
+			fresh.append(id)
+	if not fresh.is_empty() and rng.randf() < float(P().get("new_card_chance", 0.5)):
+		cand = fresh
 	if cand.is_empty():
 		return ""
 	return cand[rng.randi_range(0, cand.size() - 1)]

@@ -5,7 +5,7 @@ const TYPE_NAMES := {"trap": "Ловушка", "monster": "Монстр", "room"
 const TYPE_COLORS := {"trap": Color("#8a8a8a"), "monster": Color("#c03a3a"), "room": Color("#8a4ac0"), "spell": Color("#3a6ac8")}
 const RARITY_NAMES := {"common": "Обычная", "rare": "Редкая", "epic": "Эпическая", "legendary": "Легендарная", "special": "Особая"}
 const RARITY_COLORS := {"common": Color("#b0b0b0"), "rare": Color("#4a9ae0"), "epic": Color("#b060e0"), "legendary": Color("#f0a020"), "special": Color("#60c0a0")}
-const RARITY_PRICE := {"common": 8, "rare": 14, "epic": 22, "legendary": 35, "special": 8}
+const RARITY_PRICE := {"common": 80, "rare": 140, "epic": 220, "legendary": 350, "special": 80}
 const FLOOR_MULT := [1.0, 1.6, 2.4]
 const KEYWORDS := {
 	"Вход": "Срабатывает, когда герой заходит на клетку",
@@ -133,8 +133,24 @@ func cdef(id: String, up: bool = false, lvl: int = 1) -> Dictionary:
 		d["kw"] = []
 	if lvl > 1:
 		_scale_def(d, lvl)
+		if is_utility(id):
+			_utility_bonus(d, lvl)
 	_cdef_cache[key] = d
 	return d
+
+
+## Утилитарная карта (Замедление, Страх, добор…) растёт иначе: каждый уровень
+## добавляет урон при Входе (Ловушки и Комнаты) или золото в Казну (Заклинания).
+func _utility_bonus(d: Dictionary, lvl: int) -> void:
+	var ub: Dictionary = prog.get("utility_bonus", {"damage": 5, "gold": 10})
+	if d.type == "spell":
+		var g := int(ub.gold) * (lvl - 1)
+		d["play"] = d.get("play", []) + [{"a": "gold", "n": g}]
+		d["lvl_bonus"] = {"a": "gold", "n": g}
+	else:
+		var n := int(ub.damage) * (lvl - 1)
+		d["enter"] = d.get("enter", []) + [{"a": "damage", "n": n}]
+		d["lvl_bonus"] = {"a": "damage", "n": n}
 
 
 ## Действия, числа которых растут с уровнем. Замедление, Страх, Тьма и добор не растут:
@@ -180,6 +196,9 @@ func card_text(id: String, up: bool = false, lvl: int = 1) -> String:
 			t = swapped
 	if not rest.is_empty():
 		t += "\n(Ур.%d: %s)" % [lvl, ", ".join(rest)]
+	var lb: Dictionary = cdef(id, up, lvl).get("lvl_bonus", {})
+	if not lb.is_empty():
+		t += ("\n+%d урона при Входе" if lb.a == "damage" else "\n+%d золота в Казну") % int(lb.n)
 	return t
 
 
@@ -260,9 +279,18 @@ func upgrade_changes(id: String, lvl: int = 1) -> Array:
 	return out
 
 
-## Утилитарная карта: её числа не растут с уровнем (Замедление, Страх, добор…).
+## Утилитарная карта: в ней нет чисел, которые растут с уровнем (Замедление, Страх, добор…).
 func is_utility(id: String) -> bool:
-	return level_changes(id, 1, int(prog.get("max_level", 8))).is_empty()
+	var c: Dictionary = cards.get(id, {})
+	if c.is_empty() or int(c.get("hp", 0)) > 0 or int(c.get("atk", 0)) > 0:
+		return false
+	if c.get("special", "") in ["dark_altar", "cauldron"]:
+		return false
+	for key in ["enter", "exit", "aura", "play", "on_hit", "ambush", "death"]:
+		for a in c.get(key, []):
+			if a.a in SCALED_ACTIONS and int(a.get("n", 0)) > 0:
+				return false
+	return true
 
 
 ## Что даёт следующий уровень коллекции: «Урон: 3 → 4».
@@ -285,6 +313,11 @@ func _same_shape(a: Dictionary, b: Dictionary) -> bool:
 ## Разница двух определений карты в виде строк «Название: было → стало».
 func def_changes(a: Dictionary, b: Dictionary) -> Array:
 	var out := []
+	var ba: Dictionary = a.get("lvl_bonus", {})
+	var bb: Dictionary = b.get("lvl_bonus", {})
+	if int(ba.get("n", 0)) != int(bb.get("n", 0)):
+		var nm := "Урон при Входе" if bb.get("a", ba.get("a", "")) == "damage" else "Золото в Казну"
+		out.append("%s: %d → %d" % [nm, int(ba.get("n", 0)), int(bb.get("n", 0))])
 	for pair in [["cost", "Стоимость"], ["hp", "Здоровье"], ["atk", "Атака"]]:
 		if a.has(pair[0]) and a.get(pair[0]) != b.get(pair[0]):
 			out.append("%s: %d → %d" % [pair[1], int(a[pair[0]]), int(b[pair[0]])])
