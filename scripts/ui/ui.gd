@@ -477,21 +477,30 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	var rc: Color = Data.RARITY_COLORS.get(d.rarity, DIM)
 	var art := PanelContainer.new()
 	art.add_theme_stylebox_override("panel", style(rc.darkened(0.82), 0, rc.darkened(0.25), 2, 4))
-	art.add_child(center(card_icon(id, clampi(w / 30, 5, 12))))
-	# Камень редкости в углу картинки (PanelContainer уважает флаги размера).
+	var art_icon := card_icon(id, clampi(w / 30, 5, 12))
+	# Запас снизу под табличку уровня, чтобы она не закрывала рисунок.
+	art.custom_minimum_size = Vector2(0, art_icon.custom_minimum_size.y + 46)
+	var ac := center(art_icon)
+	ac.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	ac.custom_minimum_size = Vector2(0, art_icon.custom_minimum_size.y + 6)
+	art.add_child(ac)
+	# На картинке: слева вверху тип, справа вверху редкость, снизу по центру уровень
+	# (PanelContainer уважает флаги размера детей).
+	var tic := icon("icons/type_" + str(d.type), 4 if w >= 190 else 3)
+	tic.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	tic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	tic.tooltip_text = Data.TYPE_NAMES.get(d.type, "")
+	art.add_child(tic)
 	var gem := rarity_gem(d.rarity, 4 if w >= 190 else 3)
 	gem.size_flags_horizontal = Control.SIZE_SHRINK_END
 	gem.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	art.add_child(gem)
-	v.add_child(art)
-	# Тип и редкость слева, уровень справа.
-	var tl := type_line(d.type, d.rarity, 16)
 	if lvl > 1:
-		var sp := spacer(0)
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tl.add_child(sp)
-		tl.add_child(level_badge(lvl, 16))
-	v.add_child(tl)
+		var lb := level_badge(lvl, 16)
+		lb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		lb.size_flags_vertical = Control.SIZE_SHRINK_END
+		art.add_child(lb)
+	v.add_child(art)
 	# Текст не раздувает карточку: все карточки одного размера.
 	var txt := label(Data.card_text(id, up, lvl), 20 if w >= 280 else 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -614,14 +623,31 @@ static func relic_card(id: String, selected: bool, w: int = 212) -> PanelContain
 
 
 ## Значок уровня карты: «Ур.3».
+## Табличка уровня: тёмная пластинка с золотой рамкой и пиксельной цифрой.
+## На максимальном уровне — золотая пластинка.
 static func level_badge(lvl: int, size: int = 16) -> PanelContainer:
+	var maxed := lvl >= Progress.max_level()
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", style(Color("#2a6fb8") if lvl < Progress.max_level() else Color("#c47b25"), 0, INK, 2, 3))
-	var l := label("Ур.%d" % lvl, size, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false)
+	var sb := style(Color("#c47b25") if maxed else Color("#18141e"), 0, Color("#ffe08a") if maxed else GOLD, 2, 0)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	sb.content_margin_top = 1
+	sb.content_margin_bottom = 1
+	sb.shadow_color = Color(0, 0, 0, 0.6)
+	sb.shadow_size = 0
+	sb.shadow_offset = Vector2(2, 2)
+	p.add_theme_stylebox_override("panel", sb)
+	var l := Label.new()
+	l.text = "УР %d" % lvl
+	l.add_theme_font_override("font", pixel_font())
+	l.add_theme_font_size_override("font_size", pfs(size))
+	l.add_theme_color_override("font_color", Color.WHITE if maxed else GOLD)
 	l.add_theme_color_override("font_outline_color", INK)
 	l.add_theme_constant_override("outline_size", 4)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.add_child(l)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return p
 
 
