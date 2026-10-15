@@ -280,9 +280,16 @@ static func column(root: Control, pad: int = 12) -> MarginContainer:
 
 ## Кнопка паузы со значком.
 static func pause_button(cb: Callable, size: int = 64) -> Button:
-	var b := icon_button("icons/pause", cb, 4, size)
+	var b := button("", cb, 24, size)
+	b.custom_minimum_size = Vector2(size, size)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# Значок по центру с отступом от рамки, а не во всю кнопку.
+	var c := CenterContainer.new()
+	full(c)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.add_child(icon("icons/pause", 3))
+	b.add_child(c)
 	return b
 
 
