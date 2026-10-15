@@ -32,7 +32,7 @@ func _ready() -> void:
 		holder.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 		var cv := UI.card_view(id, false, 212, Game.card_level(id))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
-		cv.gui_input.connect(_card_input.bind(id))
+		UI.on_press(cv, _card_info.bind(id), _card_info.bind(id))
 		holder.add_child(cv)
 		if copies.size() > 1:
 			var badge := UI.framed("popup", 4)
@@ -61,9 +61,8 @@ func _ready() -> void:
 	lay.footer.add_child(UI.button("Уйти", func(): Game.node_done(), 24, 70))
 
 
-func _card_input(ev: InputEvent, id: String) -> void:
-	if ev is InputEventMouseButton and ev.pressed:
-		UI.card_popup(self, id, false, Game.card_level(id))
+func _card_info(id: String) -> void:
+	UI.card_popup(self, id, false, Game.card_level(id))
 
 
 func _upgrade(c: Dictionary) -> void:

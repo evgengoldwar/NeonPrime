@@ -71,9 +71,7 @@ static func pick_cards(parent: Node, heading: String, n: int, filter: Callable, 
 	ok.disabled = true
 	UI.tint_button(ok, UI.ACCENT)
 	var ov: Control = p.overlay
-	var toggle := func(ev: InputEvent, c: Dictionary, view: Control):
-		if not (ev is InputEventMouseButton and ev.pressed):
-			return
+	var toggle := func(c: Dictionary, view: Control):
 		if c in chosen:
 			chosen.erase(c)
 			view.modulate = Color.WHITE
@@ -86,13 +84,15 @@ static func pick_cards(parent: Node, heading: String, n: int, filter: Callable, 
 		ov.queue_free()
 		on_done.call(chosen)
 	ok.pressed.connect(confirm)
+	var show := func(cc: Dictionary): UI.card_popup(parent, cc.id, cc.up, int(cc.get("lvl", 1)))
 	var count := 0
 	for c in Game.run.deck:
 		if filter.is_valid() and not filter.call(c):
 			continue
 		var cv := UI.card_view(c.id, c.up, 190, int(c.get("lvl", 1)))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
-		cv.gui_input.connect(toggle.bind(c, cv))
+		# Касание — выбрать, удержание — подробное описание.
+		UI.on_press(cv, toggle.bind(c, cv), show.bind(c))
 		grid.add_child(cv)
 		count += 1
 	if count == 0:

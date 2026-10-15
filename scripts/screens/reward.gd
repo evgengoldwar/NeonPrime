@@ -74,21 +74,25 @@ func _relic_choice(body: VBoxContainer, footer: VBoxContainer, relics: Array) ->
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for id in relics:
 		var card := UI.relic_card(id, id == _sel_relic, CARD_W)
-		card.gui_input.connect(_relic_input.bind(id))
+		UI.on_press(card, _select_relic.bind(id), _relic_info.bind(id))
 		row.add_child(card)
 	body.add_child(row)
-	body.add_child(UI.label("Коснись реликвии, чтобы выбрать", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	body.add_child(UI.label("Коснись — выбрать · удержи — подробнее", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	var take := UI.button("Выбери реликвию" if _sel_relic == "" else "Забрать «%s»" % Data.relics[_sel_relic].name, _take_relic, 28, 84)
 	take.disabled = _sel_relic == ""
 	UI.tint_button(take, UI.GOLD)
 	footer.add_child(take)
 
 
-func _relic_input(ev: InputEvent, id: String) -> void:
-	if ev is InputEventMouseButton and ev.pressed:
-		_sel_relic = id
-		Sfx.play("click")
-		_build()
+func _select_relic(id: String) -> void:
+	_sel_relic = id
+	Sfx.play("click")
+	_build()
+
+
+func _relic_info(id: String) -> void:
+	var r: Dictionary = Data.relics[id]
+	UI.info_popup(self, r.name, r.text + "\n\n" + UI.relic_origin(id))
 
 
 func _take_relic() -> void:
@@ -115,10 +119,10 @@ func _card_choice(body: VBoxContainer, footer: VBoxContainer, cards: Array) -> v
 		if id == _sel_card:
 			cv.add_theme_stylebox_override("panel", UI.frame("card_selected", 10))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
-		cv.gui_input.connect(_card_input.bind(id))
+		UI.on_press(cv, _select_card.bind(id), _card_info.bind(id))
 		row.add_child(cv)
 	body.add_child(row)
-	body.add_child(UI.label("Коснись карты, чтобы выбрать", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	body.add_child(UI.label("Коснись — выбрать · удержи — подробнее", 16, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	var take := UI.button("Выбери карту" if _sel_card == "" else "Взять «%s»" % Data.card_name(_sel_card), _take_card, 28, 84)
 	take.disabled = _sel_card == ""
 	UI.tint_button(take, UI.GREEN)
@@ -131,11 +135,14 @@ func _card_choice(body: VBoxContainer, footer: VBoxContainer, cards: Array) -> v
 	footer.add_child(row2)
 
 
-func _card_input(ev: InputEvent, id: String) -> void:
-	if ev is InputEventMouseButton and ev.pressed:
-		_sel_card = id
-		Sfx.play("click")
-		_build()
+func _select_card(id: String) -> void:
+	_sel_card = id
+	Sfx.play("click")
+	_build()
+
+
+func _card_info(id: String) -> void:
+	UI.card_popup(self, id, false, Game.card_level(id))
 
 
 func _take_card() -> void:

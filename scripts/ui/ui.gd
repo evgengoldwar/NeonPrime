@@ -887,6 +887,45 @@ static func progress_bar(value: int, total: int, w: int, color: Color, text: Str
 	return c
 
 
+# ---------------------------------------------------------------- касание и удержание
+
+const LONG_PRESS := 0.45
+
+
+## Касание — on_tap, удержание (0,45 с) — on_long. Подходит для карточек выбора:
+## коснулся — выбрал, зажал — прочитал подробное описание.
+static func on_press(c: Control, on_tap: Callable, on_long: Callable) -> void:
+	c.mouse_filter = Control.MOUSE_FILTER_STOP
+	var t := Timer.new()
+	t.one_shot = true
+	t.wait_time = LONG_PRESS
+	c.add_child(t)
+	t.timeout.connect(_long_fire.bind(c, on_long))
+	c.gui_input.connect(_press_input.bind(c, t, on_tap))
+
+
+static func _press_input(ev: InputEvent, c: Control, t: Timer, on_tap: Callable) -> void:
+	if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
+		if ev.pressed:
+			c.set_meta("lp_fired", false)
+			t.start()
+		else:
+			t.stop()
+			if not c.get_meta("lp_fired", true) and on_tap.is_valid():
+				on_tap.call()
+	elif ev is InputEventMouseMotion and ev.relative.length() > 8 and not t.is_stopped():
+		# Палец поехал — это прокрутка, а не нажатие.
+		t.stop()
+		c.set_meta("lp_fired", true)
+
+
+static func _long_fire(c: Control, on_long: Callable) -> void:
+	c.set_meta("lp_fired", true)
+	Game.vibrate(30)
+	if on_long.is_valid():
+		on_long.call()
+
+
 # ---------------------------------------------------------------- всплывающие окна
 
 ## Затемнение + окно по центру. Возвращает {overlay, box, root}.

@@ -29,7 +29,7 @@ func _build() -> void:
 		var v := UI.vbox(4)
 		var cv := UI.card_view(it.id, false, 210, Game.card_level(it.id))
 		cv.mouse_filter = Control.MOUSE_FILTER_STOP
-		cv.gui_input.connect(_card_input.bind(it.id))
+		UI.on_press(cv, _card_info.bind(it.id), _card_info.bind(it.id))
 		if it.sold:
 			cv.modulate = Color(1, 1, 1, 0.3)
 		v.add_child(cv)
@@ -71,9 +71,8 @@ func _affordable(price: int) -> bool:
 	return int(Game.run.treasury) > price
 
 
-func _card_input(ev: InputEvent, id: String) -> void:
-	if ev is InputEventMouseButton and ev.pressed:
-		UI.card_popup(self, id, false, Game.card_level(id))
+func _card_info(id: String) -> void:
+	UI.card_popup(self, id, false, Game.card_level(id))
 
 
 func _buy_card(i: int) -> void:
