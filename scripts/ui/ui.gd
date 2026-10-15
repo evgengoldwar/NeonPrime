@@ -550,6 +550,54 @@ const ACTION_COLORS := {
 	"damage": RED, "poison": GREEN, "burn": Color("#f77622"), "slow": SOUL, "curse": DARK,
 	"greed": GOLD, "gold": GOLD, "dark": DARK, "monsters_hp": RED,
 }
+## Расшифровка значков на картах.
+const ICON_LEGEND := [
+	["hit", "Урон герою"], ["heart", "Здоровье"], ["sword", "Атака"], ["poison", "Яд"], ["burn", "Горение"],
+	["slow", "Замедление"], ["fear", "Страх"], ["stun", "Оглушение"], ["vuln", "Уязвимость"],
+	["curse", "Проклятие"], ["greed", "Жадность"], ["coin", "Золото"], ["dark", "Тьма"],
+	["draw", "Взять карты"], ["hold", "Задержка"], ["back", "Отбрасывание"], ["repeat", "Повтор"],
+	["hand", "В руку"],
+]
+
+
+## Сетка «значок — название» для подсказок.
+static func icon_legend(only: Array = []) -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 4)
+	for it in ICON_LEGEND:
+		if not only.is_empty() and not it[0] in only:
+			continue
+		var h := hbox(6)
+		var i := icon("icons/" + it[0], 3)
+		i.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(i)
+		h.add_child(label(it[1], 16, DIM, HORIZONTAL_ALIGNMENT_LEFT, false))
+		g.add_child(h)
+	return g
+
+
+## Какие значки есть на карте (для подсказки в окне карты).
+static func card_icon_names(d: Dictionary) -> Array:
+	var out := []
+	if d.type == "monster":
+		out.append_array(["heart", "sword"])
+	for t in TRIGGERS:
+		for a in d.get(t[0], []):
+			var n: String = ACTION_ICONS.get(a.a, "")
+			if n != "" and not n in out:
+				out.append(n)
+			if a.has("slow_mult") or a.has("if_slowed_mult"):
+				if not "slow" in out:
+					out.append("slow")
+			if a.has("if_greed") and not "greed" in out:
+				out.append("greed")
+			if a.get("if_burning", false) and not "burn" in out:
+				out.append("burn")
+	return out
+
+
 ## Особые механики, которые не выразить значками, — одна короткая строка.
 const SPECIAL_NOTES := {
 	"dark_altar": "Ловушки рядом: +%d урона",
@@ -967,6 +1015,9 @@ static func card_popup(parent: Node, id: String, up: bool, lvl: int = 1) -> void
 	var p := popup(parent, "")
 	p.box.add_child(center(card_view(id, up, 320, lvl)))
 	p.box.add_child(label(Data.card_text(id, up, lvl), 20, TEXT))
+	var names := card_icon_names(Data.cdef(id, up, lvl))
+	if not names.is_empty():
+		p.box.add_child(icon_legend(names))
 	var help: String = Data.keyword_help(Data.card_text(id, up))
 	if help != "":
 		p.box.add_child(label(help, 16, DIM))

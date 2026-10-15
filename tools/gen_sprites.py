@@ -1476,15 +1476,15 @@ MENU_ICONS = {
         "knnnnnNk",
         ".kkkkkk.",
     ],
-    "hit": [
-        "...k....",
-        ".k.y.k..",
-        "..yry...",
-        "kyrwryk.",
-        "..yry...",
-        ".k.y.k..",
-        "...k....",
+    "hit": [  # разбитое сердце — урон по герою
         "........",
+        ".kk.kk..",
+        "krrkkrk.",
+        "krwkrrk.",
+        "krrrkrk.",
+        ".krkrk..",
+        "..krk...",
+        "...k....",
     ],
     "draw": [
         "kkkkk...",

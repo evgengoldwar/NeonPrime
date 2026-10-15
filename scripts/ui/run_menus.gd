@@ -129,6 +129,8 @@ static func rules(parent: Node) -> void:
 	v.add_child(UI.label("Взрыв: Яд + Горение на одном герое — Яд сразу бьёт ещё раз.\nЗаморозка: Замедление 3 и больше — герой скован ещё на 2 тика.\nПробой: удар Монстра по Уязвимому герою — ×2 вместо ×1,5.", 20))
 	v.add_child(UI.label("Комбо (срабатывания тик за тиком)", 24, UI.GOLD))
 	v.add_child(UI.label("×4 — +1 Тьма в следующем зале\n×6 — +1 карта в следующем зале\n×9 — +50 золота в Казну", 20))
+	v.add_child(UI.label("Значки на картах", 24, UI.GOLD))
+	v.add_child(UI.icon_legend())
 	v.add_child(UI.label("Особые клетки (меняются каждый зал)", 24, UI.GOLD))
 	for k in BattleScript.CELL_MODS.keys():
 		var info: Array = BattleScript.CELL_MODS[k]
