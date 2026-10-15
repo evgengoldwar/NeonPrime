@@ -455,32 +455,47 @@ static func cost_badge(cost: int, size: int = 24) -> Control:
 ## Полная карточка (награды, магазин, колода).
 static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) -> PanelContainer:
 	var d: Dictionary = Data.cdef(id, up, lvl)
-	var p := framed(card_frame(id, w < 190), 20 if w >= 190 else 14)
+	var p := framed(card_frame(id, w < 190), 18 if w >= 280 else 14)
 	# Большие карточки (окно карты) ниже: иначе под текстом пустое поле.
-	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.45)))
+	# Высота с запасом под самый длинный текст: все карточки одного размера.
+	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.78)))
 	var v := vbox(6)
 	p.add_child(v)
+	# Шапка: стоимость и название в одну строку.
 	var top := hbox(6)
 	v.add_child(top)
 	top.add_child(cost_badge(int(d.cost)))
-	var nm := label(Data.card_name(id, up), 24 if w >= 190 else 16, GREEN if up else TEXT)
+	var name_text: String = Data.card_name(id, up)
+	var nm := label(name_text, _name_size(name_text, w), GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.custom_minimum_size = Vector2(10, 0)
 	top.add_child(nm)
-	if lvl > 1:
-		var lb := level_badge(lvl, 16)
-		lb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		top.add_child(lb)
-	top.add_child(rarity_gem(d.rarity, 4 if w >= 190 else 3))
 	# Картинка крупная, фон и рамка картинки — цвета редкости.
 	var rc: Color = Data.RARITY_COLORS.get(d.rarity, DIM)
 	var art := PanelContainer.new()
 	art.add_theme_stylebox_override("panel", style(rc.darkened(0.82), 0, rc.darkened(0.25), 2, 4))
-	art.add_child(center(card_icon(id, clampi(w / 26, 5, 12))))
+	art.add_child(center(card_icon(id, clampi(w / 30, 5, 12))))
+	# Камень редкости в углу картинки (PanelContainer уважает флаги размера).
+	var gem := rarity_gem(d.rarity, 4 if w >= 190 else 3)
+	gem.size_flags_horizontal = Control.SIZE_SHRINK_END
+	gem.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	art.add_child(gem)
 	v.add_child(art)
-	v.add_child(type_line(d.type, d.rarity, 16))
+	# Тип и редкость слева, уровень справа.
+	var tl := type_line(d.type, d.rarity, 16)
+	if lvl > 1:
+		var sp := spacer(0)
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tl.add_child(sp)
+		tl.add_child(level_badge(lvl, 16))
+	v.add_child(tl)
+	# Текст не раздувает карточку: все карточки одного размера.
 	var txt := label(Data.card_text(id, up, lvl), 20 if w >= 280 else 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	txt.max_lines_visible = 6 if w >= 280 else 5
 	v.add_child(txt)
 	if d.type == "monster":
 		var sh := hbox(16)
@@ -490,6 +505,14 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	ignore_mouse(p)
 	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up, lvl)
 	return p
+
+
+## Размер шрифта названия: длинные названия мельче, чтобы влезали в одну строку.
+static func _name_size(text: String, w: int) -> int:
+	var base := 24 if w >= 190 else 16
+	if w >= 190 and w < 280 and text.length() > 10:
+		base = 20 if text.length() <= 13 else 16
+	return base
 
 
 ## Камень редкости: серый, синий, фиолетовый, золотой.
