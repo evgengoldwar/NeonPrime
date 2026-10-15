@@ -106,7 +106,7 @@ static func make_theme() -> Theme:
 		t.set_color("font_hover_color", cls, Color.WHITE)
 		t.set_color("font_pressed_color", cls, GOLD)
 		t.set_color("font_focus_color", cls, TEXT)
-		t.set_color("font_disabled_color", cls, Color("#5e5470"))
+		t.set_color("font_disabled_color", cls, Color("#9a90b0"))
 		t.set_color("font_outline_color", cls, INK)
 		t.set_constant("outline_size", cls, 6)
 	t.set_stylebox("normal", "Button", frame("btn"))
@@ -419,7 +419,8 @@ static func cost_badge(cost: int, size: int = 24) -> Control:
 static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) -> PanelContainer:
 	var d: Dictionary = Data.cdef(id, up, lvl)
 	var p := framed(card_frame(id), 10)
-	p.custom_minimum_size = Vector2(w, int(w * 1.45))
+	# Большие карточки (окно карты) ниже: иначе под текстом пустое поле.
+	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.45)))
 	var v := vbox(6)
 	p.add_child(v)
 	var top := hbox(6)
@@ -433,17 +434,18 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 		var lb := level_badge(lvl, 16)
 		lb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		top.add_child(lb)
+	# Картинка крупная и растёт вместе с карточкой.
 	var art := framed("panel_dark", 4)
-	art.add_child(center(card_icon(id, 6 if w >= 190 else 5)))
+	art.add_child(center(card_icon(id, clampi(w / 26, 5, 12))))
 	v.add_child(art)
 	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, Data.RARITY_COLORS.get(d.rarity, DIM)))
-	var txt := label(Data.card_text(id, up, lvl), 16, TEXT)
+	var txt := label(Data.card_text(id, up, lvl), 20 if w >= 280 else 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(txt)
 	if d.type == "monster":
 		var sh := hbox(16)
 		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED))
-		sh.add_child(stat("sword", "Ж" if d.get("special", "") == "mimic" else str(int(d.get("atk", 0))), TEXT))
+		sh.add_child(stat("sword", "=Жадн." if d.get("special", "") == "mimic" else str(int(d.get("atk", 0))), TEXT))
 		v.add_child(sh)
 	ignore_mouse(p)
 	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up, lvl)
@@ -575,6 +577,7 @@ static func popup(parent: Node, heading: String, close_text: String = "Закр�
 	ov.color = Color(0.03, 0.02, 0.05, 0.8)
 	full(ov)
 	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	ov.z_index = 50   # поверх жетонов героев и факелов коридора
 	parent.add_child(ov)
 	var m := margin(24)
 	full(m)

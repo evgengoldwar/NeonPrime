@@ -160,13 +160,13 @@ func _summary() -> void:
 		if Progress.can_upgrade(s.id):
 			ready += 1
 	if ready > 0:
-		_stage.add_child(UI.label("Можно улучшить карт: %d — загляни в Колоду" % ready, 22, UI.GREEN, HORIZONTAL_ALIGNMENT_CENTER))
+		_stage.add_child(UI.label("Можно улучшить карт: %d — загляни во вкладку «Карты»" % ready, 22, UI.GREEN, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := UI.hbox(10)
 	var ok := UI.button("Забрать", _to_menu.bind("home"), 28, 84)
 	UI.tint_button(ok, UI.GOLD)
 	row.add_child(ok)
 	if ready > 0:
-		var db := UI.button("В колоду", _to_menu.bind("deck"), 28, 84)
+		var db := UI.button("К картам", _to_menu.bind("deck"), 28, 84)
 		UI.tint_button(db, UI.GREEN)
 		row.add_child(db)
 	_stage.add_child(row)

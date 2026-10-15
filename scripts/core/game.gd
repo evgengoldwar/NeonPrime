@@ -141,7 +141,7 @@ func unlock_achievement(id: String) -> void:
 	save_meta()
 	for a in Data.achievements:
 		if a.id == id and main:
-			main.toast("Достижение: " + a.name)
+			main.toast("Достижение: " + a.name, "good")
 
 
 func record_kill(h: Dictionary) -> void:
@@ -727,7 +727,8 @@ func battle_finished() -> void:
 		main.goto("reward")
 	else:
 		pending = {}
-		main.toast("Герой сбежал с золотом: %d" % b.gold_delta)
+		# О побеге уже сказал экран боя — второй плашки не нужно.
+		pass
 		node_done()
 
 

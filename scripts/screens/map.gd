@@ -31,6 +31,7 @@ func _ready() -> void:
 	hv.add_child(UI.label(loc.name, 32, Color(loc.light)))
 	hv.add_child(UI.label(loc.rule_text, 16, UI.DIM))
 	v.add_child(head)
+	v.add_child(_legend())
 	var sc := UI.scroll()
 	v.add_child(sc)
 	canvas = Control.new()
@@ -102,6 +103,14 @@ func _layout_nodes() -> void:
 			cap.position = Vector2((sz - 150) / 2.0, sz)
 			b.add_child(cap)
 		b.tooltip_text = tip
+		# Подпись под доступными узлами и боссом: сразу видно, куда идёшь.
+		if (is_avail or is_boss) and not (n.type == "event" and cartographer and n.event != ""):
+			var nm := UI.label(tip, 16, UI.GOLD if is_avail else UI.RED, HORIZONTAL_ALIGNMENT_CENTER, false)
+			nm.add_theme_color_override("font_outline_color", UI.INK)
+			nm.add_theme_constant_override("outline_size", 6)
+			nm.size = Vector2(150, 24)
+			nm.position = Vector2((sz - 150) / 2.0, sz + 2)
+			b.add_child(nm)
 		var nid := int(n.id)
 		b.pressed.connect(func(): _enter(nid))
 		canvas.add_child(b)
@@ -117,6 +126,22 @@ func _layout_nodes() -> void:
 		here.position = at - here.size / 2 + Vector2(44, -40)
 		here.z_index = 2
 		canvas.add_child(here)
+
+
+## Легенда значков карты.
+func _legend() -> Control:
+	var p := UI.framed("panel_dark", 6)
+	var g := GridContainer.new()
+	g.columns = 4
+	g.add_theme_constant_override("h_separation", 10)
+	g.add_theme_constant_override("v_separation", 2)
+	p.add_child(g)
+	for t in ["battle", "elite", "shop", "altar", "event", "treasure", "boss"]:
+		var h := UI.hbox(4)
+		h.add_child(UI.icon("nodes/" + t, 3))
+		h.add_child(UI.label(Game.NODE_NAMES.get(t, t), 16, UI.DIM, HORIZONTAL_ALIGNMENT_LEFT, false))
+		g.add_child(h)
+	return p
 
 
 ## Пунктирные пиксельные тропы между узлами.

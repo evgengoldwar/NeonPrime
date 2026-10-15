@@ -14,6 +14,19 @@ const RARITY_ORDER := {"legendary": 0, "epic": 1, "rare": 2, "common": 3}
 
 static var tab := "home"
 
+const TIPS := [
+	"Слизь перед Шипами: каждое Замедление удваивает урон Шипов.",
+	"Призрак повторяет «Вход» карты на клетке перед ним.",
+	"Яд и Горение на одном герое дают Взрыв — Яд бьёт ещё раз.",
+	"Комбо ×4 даёт +1 Тьму в следующем зале, ×6 — лишнюю карту.",
+	"Ловушка на Ловчей яме срабатывает дважды — ставь туда самую сильную.",
+	"Источник лечит героя: не оставляй на его пути слабые карты.",
+	"Что осталось в Казне после победы — твоё золото для прокачки.",
+	"Сундуки открываются по одному: ставь на ночь самый долгий.",
+	"Коснись карты или клетки в бою, чтобы прочитать описание.",
+	"Хозяин даёт +1 уровень картам своего крыла.",
+]
+
 var _top: Control
 var _content: Control
 var _tabbar: HBoxContainer
@@ -147,6 +160,7 @@ func _page() -> VBoxContainer:
 	_content.add_child(sc)
 	var body := UI.vbox(12)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.add_child(body)
 	return body
 
@@ -206,6 +220,9 @@ func _home() -> void:
 	go.disabled = not Game.master_unlocked(m.id)
 	UI.tint_button(go, UI.GOLD)
 	body.add_child(go)
+	var tip := UI.label("Совет: " + TIPS[int(Time.get_unix_time_from_system() / 20) % TIPS.size()], 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	body.add_child(tip)
+	body.add_child(UI.spacer(0, true))
 	body.add_child(_section("Сундуки"))
 	var slots := UI.hbox(6)
 	for i in Game.meta.chests.size():
@@ -232,92 +249,112 @@ func _home() -> void:
 func _master_panel() -> Control:
 	var m: Dictionary = Data.master_list[_master_idx]
 	var unlocked: bool = Game.master_unlocked(m.id)
-	var p := UI.framed("popup" if unlocked else "panel", 12)
+	var p := UI.framed("popup" if unlocked else "panel", 10)
 	var v := UI.vbox(8)
 	p.add_child(v)
+	# Шапка: стрелки, портрет, имя и правила Хозяина.
 	var nav := UI.hbox(8)
 	v.add_child(nav)
-	var prev := UI.button("<", _shift_master.bind(-1), 34, 80)
-	prev.custom_minimum_size = Vector2(72, 80)
-	prev.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	prev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	nav.add_child(prev)
-	var mid := UI.vbox(4)
-	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var spr := UI.icon("masters/" + str(m.id), 11)
+	nav.add_child(_arrow("<", -1))
+	var spr := UI.icon("masters/" + str(m.id), 10)
+	spr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if not unlocked:
 		spr.modulate = Color(0, 0, 0, 0.85)
-	mid.add_child(UI.center(spr))
-	mid.add_child(UI.title(m.name, 32))
-	nav.add_child(mid)
-	var nxt := UI.button(">", _shift_master.bind(1), 34, 80)
-	nxt.custom_minimum_size = Vector2(72, 80)
-	nxt.size_flags_horizontal = Control.SIZE_SHRINK_END
-	nxt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	nav.add_child(nxt)
-	if not unlocked:
+	nav.add_child(spr)
+	var info := UI.vbox(2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var nm := UI.label(m.name, 28, UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT)
+	nm.add_theme_font_override("font", UI.pixel_font())
+	nm.add_theme_font_size_override("font_size", UI.pfs(24))
+	info.add_child(nm)
+	info.add_child(UI.label("%d / %d" % [_master_idx + 1, Data.master_list.size()], 16, UI.DIM))
+	if unlocked:
+		info.add_child(UI.label(m.passive_text, 18, UI.TEXT))
+		info.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 16, UI.GREEN))
+	else:
 		var wing: Dictionary = {}
 		for w in Data.wings:
 			if w.id == m.unlock:
 				wing = w
-		v.add_child(UI.label("Закрыт. Открой крыло «%s» во вкладке Замок (%d Душ)." % [wing.get("name", "?"), int(wing.get("cost", 0))], 20, UI.RED, HORIZONTAL_ALIGNMENT_CENTER))
-	v.add_child(UI.label(m.passive_text, 20, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	# Колода Хозяина: с ней начинается каждый забег.
-	v.add_child(UI.label("Колода Хозяина (уровни из коллекции):", 18, UI.GOLD))
-	var grid := GridContainer.new()
-	grid.columns = 5
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
+		info.add_child(UI.label("Закрыт: открой крыло «%s» во вкладке Замок за %d Душ" % [wing.get("name", "?"), int(wing.get("cost", 0))], 18, UI.RED))
+	nav.add_child(info)
+	nav.add_child(_arrow(">", 1))
+	# Колода Хозяина одной строкой значков.
+	var dh := UI.hbox(8)
+	var dl := UI.label("Колода Хозяина · коснись карты", 16, UI.DIM)
+	dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dh.add_child(dl)
+	dh.add_child(UI.stat("coin", "Казна %d" % (int(m.treasury) + Progress.treasury_bonus()), UI.GOLD, 18))
+	v.add_child(dh)
+	var row := UI.hbox(4)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for id in m.deck:
-		var mc := UI.mini_card({"id": id, "lvl": Game.card_level_for(id, m.id)}, 116, 140)
-		mc.mouse_filter = Control.MOUSE_FILTER_STOP
-		mc.gui_input.connect(_tap_card.bind(id))
-		grid.add_child(mc)
-	v.add_child(UI.center(grid))
-	v.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 18, UI.GREEN))
-	v.add_child(UI.stat("coin", "Казна %d (+%d за уровень игрока)" % [int(m.treasury), Progress.treasury_bonus()], UI.GOLD, 18))
-	v.add_child(_notoriety_box())
+		row.add_child(_deck_tile(id, Game.card_level_for(id, m.id)))
+	v.add_child(row)
+	v.add_child(_notoriety_row())
 	return p
 
 
-## Дурная слава: выбор уровня и что он делает.
-func _notoriety_box() -> Control:
-	var p := UI.framed("panel_dark", 10)
-	var v := UI.vbox(6)
-	p.add_child(v)
+func _arrow(text: String, d: int) -> Button:
+	var b := UI.button(text, _shift_master.bind(d), 30, 72)
+	b.custom_minimum_size = Vector2(56, 96)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return b
+
+
+## Значок карты колоды: рамка типа, картинка, уровень.
+func _deck_tile(id: String, lvl: int) -> Control:
+	var t := UI.framed(UI.card_frame(id), 3)
+	t.custom_minimum_size = Vector2(62, 74)
+	var v := UI.vbox(0)
+	t.add_child(v)
+	v.add_child(UI.center(UI.card_icon(id, 4)))
+	v.add_child(UI.label("Ур.%d" % lvl, 16, UI.SOUL if lvl > 1 else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER, false))
+	UI.ignore_mouse(t)
+	t.mouse_filter = Control.MOUSE_FILTER_STOP
+	t.gui_input.connect(_tap_card.bind(id))
+	return t
+
+
+## Дурная слава одной строкой; подробности — по кнопке «?».
+func _notoriety_row() -> Control:
 	var cur := int(Game.meta.notoriety_pick)
 	var top_max := int(Game.meta.notoriety_max)
-	if top_max > 0:
-		var nh := UI.hbox(8)
-		var minus := UI.button("−", _set_notoriety.bind(-1), 28, 56)
-		minus.custom_minimum_size = Vector2(64, 56)
-		minus.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		nh.add_child(minus)
-		var nl := UI.label("Дурная слава: %d" % int(Game.meta.notoriety_pick), 22, UI.ACCENT.lightened(0.3), HORIZONTAL_ALIGNMENT_CENTER)
-		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		nh.add_child(nl)
-		var plus := UI.button("+", _set_notoriety.bind(1), 28, 56)
-		plus.custom_minimum_size = Vector2(64, 56)
-		plus.size_flags_horizontal = Control.SIZE_SHRINK_END
-		nh.add_child(plus)
-		v.add_child(nh)
-	else:
-		v.add_child(UI.label("Дурная слава: 0", 22, UI.ACCENT.lightened(0.3), HORIZONTAL_ALIGNMENT_CENTER))
-	if cur == 0:
-		v.add_child(UI.label("Обычная сложность. Победа открывает Дурную славу 1: герои злее, а награды больше.", 18, UI.DIM))
-	else:
-		var lines := []
-		for i in cur:
-			lines.append("%d. %s" % [i + 1, Data.notoriety[i]])
-		v.add_child(UI.label("Усложнения:\n" + "\n".join(lines), 18, Color("#f6757a")))
-		var reward := "Награда: Души +%d%%" % (cur * 10)
-		if cur >= 3:
-			reward += ", за победу — Магический сундук вместо Золотого"
-		v.add_child(UI.label(reward, 18, UI.GREEN))
-	if top_max < Data.notoriety.size():
-		v.add_child(UI.label("Следующий уровень (%d): %s — откроется после победы на уровне %d" % [top_max + 1, Data.notoriety[top_max], top_max], 16, UI.DIM))
-	return p
+	var h := UI.hbox(6)
+	var minus := UI.button("−", _set_notoriety.bind(-1), 28, 56)
+	minus.custom_minimum_size = Vector2(60, 56)
+	minus.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	minus.disabled = cur <= 0
+	h.add_child(minus)
+	var text := "Дурная слава %d" % cur
+	if cur > 0:
+		text += " · Души +%d%%" % (cur * 10)
+	var l := UI.label(text, 22, UI.ACCENT.lightened(0.3) if cur > 0 else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(l)
+	var plus := UI.button("+", _set_notoriety.bind(1), 28, 56)
+	plus.custom_minimum_size = Vector2(60, 56)
+	plus.size_flags_horizontal = Control.SIZE_SHRINK_END
+	plus.disabled = cur >= top_max
+	h.add_child(plus)
+	var q := UI.button("?", _notoriety_help, 28, 56)
+	q.custom_minimum_size = Vector2(60, 56)
+	q.size_flags_horizontal = Control.SIZE_SHRINK_END
+	h.add_child(q)
+	return h
+
+
+func _notoriety_help() -> void:
+	var p := UI.popup(self, "Дурная слава")
+	var cur := int(Game.meta.notoriety_pick)
+	var top_max := int(Game.meta.notoriety_max)
+	p.box.add_child(UI.label("Каждая победа на максимальном уровне открывает следующий. Чем выше слава, тем злее герои и больше награда: Души +10% за уровень, с 3-го уровня за победу — Магический сундук.", 20, UI.TEXT))
+	for i in Data.notoriety.size():
+		var col := Color("#f6757a") if i < cur else (UI.DIM if i < top_max else Color(0.45, 0.42, 0.5))
+		var suffix := "  (действует)" if i < cur else ("" if i < top_max else "  (закрыт)")
+		p.box.add_child(UI.label("%d. %s%s" % [i + 1, Data.notoriety[i], suffix], 20, col))
 
 
 func _shift_master(d: int) -> void:
@@ -449,7 +486,7 @@ func _claim_free() -> void:
 
 func _open(contents: Dictionary) -> void:
 	if contents.is_empty():
-		Game.main.toast("Не хватает кристаллов")
+		Game.main.toast("Не хватает кристаллов", "bad")
 		return
 	Progress.opening = contents
 	Game.main.goto("chest_open")
@@ -492,7 +529,7 @@ func _deck() -> void:
 	if up > 0:
 		head.add_child(UI.label("Можно улучшить: %d" % up, 20, UI.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, false))
 	body.add_child(head)
-	body.add_child(UI.label("Колоду собирать не нужно: каждый Хозяин приходит со своей колодой, а награды в забеге зависят от Хозяина и локации. Здесь карты только прокачиваются — уровень действует везде.", 18, UI.DIM))
+	body.add_child(UI.label("Уровень карты действует во всех забегах. Копии выпадают из сундуков, золото — остаток Казны.", 18, UI.DIM))
 	_group(body, "Базовые · у всех Хозяев", "", _ids_of_set("base"), false)
 	for w in Data.wings:
 		var open := Game.wing_unlocked(w.id)
@@ -659,7 +696,7 @@ func _do_upgrade(id: String, ov: Control) -> void:
 		return
 	ov.queue_free()
 	Sfx.play("combo")
-	Game.main.toast("%s: уровень %d!" % [Data.card_name(id), Progress.level_of(id)])
+	Game.main.toast("%s: уровень %d!" % [Data.card_name(id), Progress.level_of(id)], "good")
 	_build_top()
 	_show(tab)
 	card_detail(id)

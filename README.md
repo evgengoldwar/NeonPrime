@@ -69,6 +69,8 @@ godot --path . res://tools/touch_test.tscn
 godot --headless --path . res://tools/balance_sim.tscn -- levels=1,3,5,8 runs=8 notoriety=0
 ```
 
+`tools/ui_shots.tscn` снимает скриншоты всех экранов (нужна отрисовка: `xvfb-run godot --path . --resolution 720x1280 res://tools/ui_shots.tscn -- out=/папка`).
+
 Не запускайте два прогона одновременно — они пишут в одно сохранение. `off=combo,reactions,cells` выключает механики боя, чтобы оценить их вклад. Последний замер (бот, все карты на уровне): ур.1 + Слава 0 — 45% побед; ур.3 + Слава 5 — 47%; ур.5 + Слава 5 — 75%; ур.8 + Слава 10 — 63%.
 
 ## Устройство

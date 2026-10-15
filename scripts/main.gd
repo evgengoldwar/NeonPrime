@@ -6,6 +6,7 @@ const UI := preload("res://scripts/ui/ui.gd")
 var screen: Control = null
 var _layer: Control
 var _toasts: VBoxContainer
+const MAX_TOASTS := 3
 
 
 func _ready() -> void:
@@ -21,9 +22,12 @@ func _ready() -> void:
 	UI.full(_layer)
 	_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_layer)
-	_toasts = UI.vbox(8)
-	_toasts.position = Vector2(60, 90)
-	_toasts.custom_minimum_size = Vector2(600, 0)
+	_toasts = UI.vbox(6)
+	_toasts.anchor_left = 0.5
+	_toasts.anchor_right = 0.5
+	_toasts.offset_left = -280
+	_toasts.offset_right = 280
+	_toasts.offset_top = 96
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
 	goto("loading")
@@ -44,14 +48,30 @@ func goto(name: String) -> void:
 	screen = s
 
 
-func toast(text: String) -> void:
-	var p := UI.framed("popup", 12)
-	p.add_child(UI.label(text, 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+## Короткое сообщение сверху. kind: info, good (золотая рамка), bad (красная).
+## Одновременно не больше 3, одинаковые не дублируются.
+func toast(text: String, kind: String = "info") -> void:
+	for ch in _toasts.get_children():
+		if ch.has_meta("text") and ch.get_meta("text") == text and not ch.is_queued_for_deletion():
+			return
+	while _toasts.get_child_count() >= MAX_TOASTS:
+		var old := _toasts.get_child(0)
+		_toasts.remove_child(old)
+		old.queue_free()
+	var border: Color = {"good": UI.GOLD, "bad": UI.RED}.get(kind, UI.PANEL3)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UI.style(Color(0.09, 0.07, 0.12, 0.94), 0, border, 3, 10))
+	p.set_meta("text", text)
+	var l := UI.label(text, 20, UI.GOLD if kind == "good" else UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	p.add_child(l)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.add_child(p)
+	p.modulate.a = 0.0
 	var tw := p.create_tween()
-	tw.tween_interval(2.2)
-	tw.tween_property(p, "modulate:a", 0.0, 0.5)
+	tw.tween_property(p, "modulate:a", 1.0, 0.12)
+	tw.tween_interval(2.0 if kind == "info" else 2.6)
+	tw.tween_property(p, "modulate:a", 0.0, 0.35)
 	tw.tween_callback(p.queue_free)
 
 

@@ -110,7 +110,7 @@ func _buy_wing(w: Dictionary) -> void:
 	Game.meta.wings.append(w.id)
 	Progress.on_wing(w.id, true)
 	Game.save_meta()
-	Game.main.toast("Открыто крыло «%s» и Хозяин %s" % [w.name, Data.masters[w.master].name])
+	Game.main.toast("Открыто крыло «%s» и Хозяин %s" % [w.name, Data.masters[w.master].name], "good")
 	_build()
 
 

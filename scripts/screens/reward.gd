@@ -54,7 +54,8 @@ func _header(r: Dictionary) -> Control:
 		var title := "Повержен: " if killed.size() == 1 else "Повержены: "
 		v.add_child(UI.label(title + ", ".join(names), 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	var gold := int(r.get("gold", 0))
-	v.add_child(UI.center(UI.stat("coin", "%+d в Казну" % gold, UI.GOLD if gold >= 0 else UI.RED, 32)))
+	if gold != 0:
+		v.add_child(UI.center(UI.stat("coin", "%+d в Казну" % gold, UI.GOLD if gold > 0 else UI.RED, 32)))
 	return p
 
 
@@ -97,7 +98,6 @@ func _take_relic() -> void:
 	Game.pending["relic_taken"] = true
 	Game.save_run()
 	Sfx.play("coin")
-	Game.main.toast("Реликвия: " + Data.relics[_sel_relic].name)
 	_build()
 
 

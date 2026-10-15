@@ -37,8 +37,9 @@ func _ready() -> void:
 		if copies.size() > 1:
 			var badge := UI.framed("popup", 4)
 			badge.add_child(UI.label("×%d" % copies.size(), 24, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER, false))
+			# Внизу справа: сверху справа уже значок уровня.
 			badge.size_flags_horizontal = Control.SIZE_SHRINK_END
-			badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+			badge.size_flags_vertical = Control.SIZE_SHRINK_END
 			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			holder.add_child(badge)
 		v.add_child(holder)

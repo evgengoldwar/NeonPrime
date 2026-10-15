@@ -23,6 +23,7 @@ var top_hall: Label
 var heroes_box: HBoxContainer
 var corridor: Control
 var cell_panels := []
+var _log_until := 0
 var tokens := {}
 var dark_box: HBoxContainer
 var dark_label: Label
@@ -451,7 +452,16 @@ func _refresh_hand() -> void:
 		hand_box.add_child(mc)
 
 
+## Короткое сообщение боя в строке под коридором (не закрывает экран).
+func _log(text: String) -> void:
+	_log_until = Time.get_ticks_msec() + 2600
+	hint.text = text
+	hint.add_theme_color_override("font_color", UI.SOUL)
+
+
 func _update_hint() -> void:
+	if Time.get_ticks_msec() < _log_until:
+		return
 	var text := ""
 	hint.add_theme_color_override("font_color", UI.DIM)
 	if b.tutorial:
@@ -546,6 +556,9 @@ func _input_press(ev: InputEvent, kind: String, idx: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if _log_until > 0 and Time.get_ticks_msec() >= _log_until:
+		_log_until = 0
+		_update_hint()
 	if not _press.is_empty() and Time.get_ticks_msec() - int(_press.t) >= LONG_PRESS_MS:
 		var p := _press
 		_press = {}
@@ -590,7 +603,7 @@ func _tap(kind: String, idx: int) -> void:
 				Sfx.play("place")
 				selected = -1
 			else:
-				Game.main.toast("Не хватает Тьмы" if b.cells[idx] == null or not b.cells[idx].locked else "Клетка занята")
+				Game.main.toast("Не хватает Тьмы" if b.cells[idx] == null or not b.cells[idx].locked else "Клетка занята", "bad")
 			_refresh()
 		elif b.cells[idx] != null:
 			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
@@ -718,7 +731,7 @@ func _play_spell(idx: int) -> void:
 		selected = -1
 		_play_events(b.take_events())
 	else:
-		Game.main.toast("Не хватает Тьмы")
+		Game.main.toast("Не хватает Тьмы", "bad")
 	_refresh()
 
 
@@ -769,7 +782,7 @@ func _after_tick() -> void:
 	if b.phase == "prep":
 		Game.save_run()
 		if b.hall > 0:
-			Game.main.toast("Зал %d. Готовь новую выкладку" % (b.hall + 1))
+			_log("Зал %d из 3 — готовь новую выкладку" % (b.hall + 1))
 	elif b.phase == "done":
 		_finish()
 
@@ -829,10 +842,10 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 				elif not quiet:
 					Sfx.play("coin")
 				if str(e.get("text", "")) != "" and not quiet:
-					Game.main.toast(str(e.text))
+					_log("%s: %+d золота" % [str(e.text), int(e.n)])
 			"escape":
 				Sfx.play("lose")
-				Game.main.toast("Герой сбежал и унёс %d золота" % int(e.greed))
+				Game.main.toast("Герой сбежал и унёс %d золота" % int(e.greed), "bad")
 			"combo":
 				if not quiet:
 					_combo(int(e.n))
@@ -843,11 +856,11 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 					_shake()
 			"reward":
 				Sfx.play("coin")
-				Game.main.toast(str(e.text))
+				Game.main.toast(str(e.text), "good")
 			"phase2":
 				_phase2(e)
 			"msg":
-				Game.main.toast(str(e.text))
+				_log(str(e.text))
 			"spell":
 				_float_at(get_global_rect().get_center(), str(e.name), UI.SOUL, 34)
 			"revive":
@@ -952,7 +965,7 @@ func _phase2(e: Dictionary) -> void:
 	tw.tween_property(flash, "color:a", 0.0, 0.6)
 	tw.tween_callback(flash.queue_free)
 	var h: Dictionary = b.hero_by_uid(e.hero)
-	Game.main.toast("%s: ФАЗА 2! %s" % [h.get("name", "Босс"), str(e.text)])
+	Game.main.toast("%s: ФАЗА 2! %s" % [h.get("name", "Босс"), str(e.text)], "bad")
 
 
 func _boss_intro() -> void:

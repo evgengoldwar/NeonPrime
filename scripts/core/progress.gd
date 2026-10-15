@@ -152,7 +152,7 @@ func on_wing(wing_id: String, notify: bool = true) -> void:
 				add_copies(id, 1)
 				got.append(Data.card_name(id))
 		if notify and Game.main and not got.is_empty():
-			Game.main.toast("Новые карты: " + ", ".join(got))
+			Game.main.toast("Новые карты: " + ", ".join(got), "good")
 
 
 ## Есть ли среди выпадающих карт карты этой редкости.
@@ -177,7 +177,7 @@ func add_xp(n: int) -> void:
 		Game.meta.xp = int(Game.meta.xp) - xp_need()
 		Game.meta.plevel = int(Game.meta.plevel) + 1
 		if Game.main:
-			Game.main.toast("Уровень игрока %d! Стартовая Казна +%d" % [int(Game.meta.plevel), int(P().player_level_treasury)])
+			Game.main.toast("Уровень игрока %d! Стартовая Казна +%d" % [int(Game.meta.plevel), int(P().player_level_treasury)], "good")
 
 
 ## Бонус к стартовой Казне за уровень игрока.
