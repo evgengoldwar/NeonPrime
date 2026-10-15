@@ -24,6 +24,7 @@ var heroes_box: HBoxContainer
 var corridor: Control
 var cell_panels := []
 var _log_until := 0
+var _hitstop_until := 0     # «стоп-кадр» после мощного удара
 var tokens := {}
 var dark_box: HBoxContainer
 var dark_label: Label
@@ -498,6 +499,31 @@ func _token_pos(h: Dictionary, order: int) -> Vector2:
 	return Vector2(x, y)
 
 
+## Пиксельные частицы над героем. dir: -1 — летят вверх, 1 — падают вниз.
+func _status_particles(node_name: String, col: Color, dir: int) -> CPUParticles2D:
+	var p := CPUParticles2D.new()
+	p.name = node_name
+	p.emitting = false
+	p.amount = 7
+	p.lifetime = 0.9
+	p.position = Vector2(28, 30 if dir < 0 else 4)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(16, 8)
+	p.direction = Vector2(0, dir)
+	p.spread = 15.0
+	p.gravity = Vector2(0, 30 * dir)
+	p.initial_velocity_min = 20.0
+	p.initial_velocity_max = 40.0
+	p.scale_amount_min = 3.0
+	p.scale_amount_max = 5.0
+	p.color = col
+	var ramp := Gradient.new()
+	ramp.set_color(0, col)
+	ramp.set_color(1, Color(col, 0.0))
+	p.color_ramp = ramp
+	return p
+
+
 func _update_tokens(animate: bool) -> void:
 	var order := 0
 	for h in b.heroes:
@@ -521,17 +547,28 @@ func _update_tokens(animate: bool) -> void:
 			var bob := spr.create_tween().set_loops()
 			bob.tween_property(spr, "position:y", spr.position.y - 3, 0.25)
 			bob.tween_property(spr, "position:y", spr.position.y, 0.25)
+			# Частицы статусов: пузырьки Яда, искры Горения, снежинки Замедления.
+			t.add_child(_status_particles("P_poison", UI.GREEN, -1))
+			t.add_child(_status_particles("P_burn", Color("#f77622"), -1))
+			t.add_child(_status_particles("P_slow", UI.SOUL, 1))
 			corridor.add_child(t)
 			tokens[key] = t
 			t.position = _token_pos(h, order)
 		var target := _token_pos(h, order)
+		(t.get_node("P_poison") as CPUParticles2D).emitting = int(h.poison) > 0
+		(t.get_node("P_burn") as CPUParticles2D).emitting = int(h.burn) > 0
+		(t.get_node("P_slow") as CPUParticles2D).emitting = int(h.slow) > 0
 		if h.state in ["dead", "fled"]:
 			t.visible = false
 		else:
 			t.visible = true
 			if animate and t.position != target:
+				# Шаг с подпрыгиванием: через верхнюю точку дуги.
+				var dur := TICK / speed * 0.8
+				var mid := (t.position + target) / 2 + Vector2(0, -12)
 				var tw := t.create_tween()
-				tw.tween_property(t, "position", target, TICK / speed * 0.8).set_trans(Tween.TRANS_QUAD)
+				tw.tween_property(t, "position", mid, dur * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tw.tween_property(t, "position", target, dur * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			else:
 				t.position = target
 		order += 1
@@ -558,7 +595,7 @@ func _process(delta: float) -> void:
 		var p := _press
 		_press = {}
 		_long_press(p.kind, p.idx)
-	if walking and not paused:
+	if walking and not paused and Time.get_ticks_msec() >= _hitstop_until:
 		acc += delta
 		var step := TICK / speed
 		while acc >= step and walking:
@@ -594,11 +631,14 @@ func _tap(kind: String, idx: int) -> void:
 			var c = b.hand[selected]
 			if Data.cards[c.id].type == "spell":
 				_play_spell(selected)
-			elif b.place(selected, idx):
-				Sfx.play("place")
-				selected = -1
 			else:
-				Game.main.toast("Не хватает Тьмы" if b.cells[idx] == null or not b.cells[idx].locked else "Клетка занята", "bad")
+				var from_g := _hand_card_center(selected)
+				if b.place(selected, idx):
+					Sfx.play("place")
+					selected = -1
+					_fly_to_cell.call_deferred(from_g, idx, str(c.id))
+				else:
+					Game.main.toast("Не хватает Тьмы" if b.cells[idx] == null or not b.cells[idx].locked else "Клетка занята", "bad")
 			_refresh()
 		elif b.cells[idx] != null:
 			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
@@ -699,8 +739,10 @@ func _cell_drop(_at: Vector2, data, idx: int) -> void:
 		if Data.cards[c.id].type == "spell":
 			_play_spell(data.idx)
 			return
+		var from_g := _hand_card_center(int(data.idx))
 		if b.place(data.idx, idx):
 			Sfx.play("place")
+			_fly_to_cell.call_deferred(from_g, idx, str(c.id))
 	elif data.from == "cell":
 		b.move_on_board(data.idx, idx)
 		Sfx.play("place")
@@ -804,12 +846,17 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 				moved = true
 			"trig":
 				if not quiet:
-					_flash_cell(int(e.cell))
+					_trigger_anim(int(e.cell))
 			"dmg":
 				if not quiet:
-					_float_at_hero(int(e.hero), "-%d" % int(e.n), UI.RED if e.kind != "poison" else UI.GREEN, 30)
-					if int(e.n) >= 100:
+					var n := int(e.n)
+					_pop_number(_hero_global(int(e.hero)), "-%d" % n, DMG_COLORS.get(str(e.kind), UI.RED), n)
+					_hurt_flash(int(e.hero), DMG_COLORS.get(str(e.kind), UI.RED))
+					if n >= 100:
+						# Мощный удар: короткий стоп-кадр, тряска и вспышка.
+						_hitstop_until = Time.get_ticks_msec() + 120
 						_shake()
+						_screen_flash(Color(1, 1, 1, 0.35))
 						Game.vibrate(60)
 						Sfx.play("big")
 					else:
@@ -822,13 +869,18 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 					_float_at_hero(int(e.hero), "+%d" % int(e.n), UI.GREEN, 26)
 			"mdmg":
 				if not quiet:
-					_float_at_cell(int(e.cell), "-%d" % int(e.n), UI.GOLD)
+					var cp: Control = cell_panels[int(e.cell)]
+					_pop_number(cp.get_global_rect().get_center() + Vector2(110, 0), "-%d" % int(e.n), UI.GOLD, int(e.n))
+			"fight":
+				if not quiet:
+					_lunge(int(e.cell), int(e.hero))
 			"status":
 				if not quiet:
 					_float_at_hero(int(e.hero), str(e.text), UI.ACCENT.lightened(0.5), 18)
 			"hdeath":
 				Sfx.play("kill")
 				Game.vibrate(80)
+				_burst(_hero_global(int(e.hero)), [UI.RED, Color("#9e2835"), UI.TEXT], 18, 140.0)
 				_float_at_hero(int(e.hero), "+%d золота" % int(e.gold), UI.GOLD, 30)
 				_fly_gold(int(e.hero))
 			"gold":
@@ -847,6 +899,15 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 			"react":
 				Sfx.play("combo", 1.4)
 				_float_at_hero(int(e.hero), str(e.text), UI.GOLD, 36)
+				var rc := UI.GOLD
+				if str(e.text).begins_with("Взрыв"):
+					rc = Color("#f77622")
+				elif str(e.text).begins_with("Заморозка"):
+					rc = UI.SOUL
+				elif str(e.text).begins_with("Пробой"):
+					rc = UI.RED
+				_screen_flash(Color(rc, 0.35))
+				_burst(_hero_global(int(e.hero)), [rc, rc.lightened(0.4), UI.TEXT], 20, 180.0)
 				if not quiet:
 					_shake()
 			"reward":
@@ -898,6 +959,156 @@ func _float_at(gpos: Vector2, text: String, col: Color, size: int) -> void:
 	tw.chain().tween_callback(l.queue_free)
 
 
+const DMG_COLORS := {
+	"trap": Color("#e43b44"), "monster": Color("#ff5a5a"), "poison": Color("#63c74d"),
+	"burn": Color("#f77622"), "env": Color("#b9aed2"),
+}
+
+
+## Цифра урона: вылетает с «подскоком», крупнее и ярче при сильном ударе.
+func _pop_number(gpos: Vector2, text: String, col: Color, n: int) -> void:
+	var size := 24 if n < 50 else (32 if n < 100 else 40)
+	var l := Label.new()
+	l.text = text + ("!" if n >= 100 else "")
+	l.add_theme_font_override("font", UI.pixel_font())
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_color_override("font_outline_color", Color.BLACK)
+	l.add_theme_constant_override("outline_size", 8)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.custom_minimum_size = Vector2(160, 0)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fx_layer.add_child(l)
+	var start := gpos - fx_layer.get_global_rect().position - Vector2(80, 24) + Vector2(randf_range(-16, 16), 0)
+	l.position = start
+	l.pivot_offset = Vector2(80, 20)
+	l.scale = Vector2(0.4, 0.4)
+	var dur := 0.8 / maxf(1.0, speed * 0.6)
+	var drift := randf_range(-30, 30)
+	var tw := l.create_tween()
+	tw.tween_property(l, "scale", Vector2(1.35, 1.35), dur * 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "scale", Vector2.ONE, dur * 0.15)
+	tw.parallel().tween_property(l, "position", start + Vector2(drift * 0.5, -40), dur * 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "position", start + Vector2(drift, -20), dur * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(l, "modulate:a", 0.0, dur * 0.5)
+	tw.tween_callback(l.queue_free)
+
+
+## Жетон героя на миг окрашивается цветом урона.
+func _hurt_flash(uid: int, col: Color) -> void:
+	var t: Control = tokens.get(str(uid))
+	if t == null:
+		return
+	var tw := t.create_tween()
+	tw.tween_property(t, "modulate", col.lightened(0.3) * 1.6, 0.05)
+	tw.tween_property(t, "modulate", Color.WHITE, 0.2)
+
+
+## Вспышка на весь экран (реакции, мощные удары).
+func _screen_flash(col: Color) -> void:
+	var r := ColorRect.new()
+	r.color = col
+	UI.full(r)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fx_layer.add_child(r)
+	var tw := r.create_tween()
+	tw.tween_property(r, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(r.queue_free)
+
+
+## Разлёт пиксельных частиц из точки.
+func _burst(gpos: Vector2, colors: Array, count: int, dist: float) -> void:
+	var base := gpos - fx_layer.get_global_rect().position
+	for i in count:
+		var px := ColorRect.new()
+		px.size = Vector2(6, 6) if i % 3 else Vector2(8, 8)
+		px.color = colors[i % colors.size()]
+		px.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		px.position = base
+		fx_layer.add_child(px)
+		var ang := randf() * TAU
+		var to := base + Vector2(cos(ang), sin(ang)) * randf_range(dist * 0.4, dist)
+		var tw := px.create_tween()
+		tw.tween_property(px, "position", to, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(px, "modulate:a", 0.0, 0.45).set_delay(0.15)
+		tw.tween_callback(px.queue_free)
+
+
+## Срабатывание карты: у каждого типа своё движение и искры.
+func _trigger_anim(idx: int) -> void:
+	if idx < 0 or idx >= cell_panels.size():
+		return
+	_flash_cell(idx)
+	var c = b.cells[idx]
+	if c == null:
+		return
+	var cp: Control = cell_panels[idx]
+	var content: Control = cp.get_node("Content")
+	var tw := content.create_tween()
+	var col := UI.TEXT
+	match Data.cards[c.id].type:
+		"trap":
+			# Ловушка «выстреливает»: резкий рывок вверх.
+			tw.tween_property(content, "position:y", -8.0, 0.04)
+			tw.tween_property(content, "position:y", 0.0, 0.12).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+			col = Color("#c2b8d6")
+		"room":
+			tw.tween_property(content, "modulate", Color(1.6, 1.0, 1.8), 0.08)
+			tw.tween_property(content, "modulate", Color.WHITE, 0.2)
+			col = Color("#c159c9")
+		_:
+			tw.tween_property(content, "position:x", -6.0, 0.04)
+			tw.tween_property(content, "position:x", 0.0, 0.1)
+			col = UI.RED
+	_burst(cp.get_global_rect().get_center() - Vector2(160, 0), [col, col.lightened(0.4)], 6, 50.0)
+
+
+## Монстр делает выпад к герою, герой отшатывается.
+func _lunge(idx: int, uid: int) -> void:
+	if idx >= 0 and idx < cell_panels.size():
+		var content: Control = cell_panels[idx].get_node("Content")
+		var tw := content.create_tween()
+		tw.tween_property(content, "position:x", -26.0, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(content, "position:x", 0.0, 0.14)
+	var t: Control = tokens.get(str(uid))
+	if t != null:
+		var tw2 := t.create_tween()
+		var p0 := t.position
+		tw2.tween_property(t, "position", p0 + Vector2(-8, 0), 0.06)
+		tw2.tween_property(t, "position", p0, 0.12)
+
+
+## Центр карты в руке на экране (откуда она полетит).
+func _hand_card_center(i: int) -> Vector2:
+	if i >= 0 and i < hand_box.get_child_count():
+		return (hand_box.get_child(i) as Control).get_global_rect().get_center()
+	return hand_box.get_global_rect().get_center()
+
+
+## Карта летит из руки на клетку и «приземляется» с отскоком.
+func _fly_to_cell(from_g: Vector2, idx: int, id: String) -> void:
+	if idx < 0 or idx >= cell_panels.size():
+		return
+	var cp: Control = cell_panels[idx]
+	var ghost := UI.card_icon(id, 5)
+	ghost.size = ghost.custom_minimum_size
+	fx_layer.add_child(ghost)
+	var base := fx_layer.get_global_rect().position
+	ghost.position = from_g - base - ghost.size / 2
+	var to := cp.get_global_rect().position - base + Vector2(140, (cp.size.y - ghost.size.y) / 2)
+	var tw := ghost.create_tween()
+	tw.tween_property(ghost, "position", to, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(ghost.queue_free)
+	var content: Control = cp.get_node("Content")
+	content.pivot_offset = cp.size / 2
+	content.scale = Vector2(0.85, 0.85)
+	var tw2 := content.create_tween()
+	tw2.tween_interval(0.16)
+	tw2.tween_property(content, "scale", Vector2(1.06, 1.06), 0.08)
+	tw2.tween_property(content, "scale", Vector2.ONE, 0.1)
+	tw2.tween_callback(_burst.bind(cp.get_global_rect().get_center() - Vector2(160, 0), [UI.DIM, UI.TEXT], 8, 40.0))
+
+
 func _flash_cell(idx: int) -> void:
 	if idx < 0 or idx >= cell_panels.size():
 		return
@@ -911,20 +1122,19 @@ func _flash_cell(idx: int) -> void:
 
 
 func _shake() -> void:
-	var tw := root_box.create_tween()
+	# Трясём весь экран (сам экран — не в контейнере, позиция у него 0).
+	var tw := create_tween()
 	for i in 4:
-		tw.tween_property(root_box, "position", Vector2(randf_range(-10, 10), randf_range(-8, 8)), 0.025)
-	tw.tween_property(root_box, "position", Vector2.ZERO, 0.05)
+		tw.tween_property(self, "position", Vector2(randf_range(-10, 10), randf_range(-8, 8)), 0.025)
+	tw.tween_property(self, "position", Vector2.ZERO, 0.05)
 
 
 func _fly_gold(uid: int) -> void:
 	var from := _hero_global(uid)
 	var to := top_treasury.get_global_rect().get_center()
 	for i in 6:
-		var coin := Panel.new()
-		coin.size = Vector2(16, 16)
-		coin.add_theme_stylebox_override("panel", UI.style(UI.GOLD, 8, Color.TRANSPARENT, 0, 0))
-		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var coin := UI.icon("icons/coin", 3)
+		coin.size = coin.custom_minimum_size
 		fx_layer.add_child(coin)
 		coin.position = from - fx_layer.get_global_rect().position + Vector2(randf_range(-30, 30), randf_range(-30, 30))
 		var tw := coin.create_tween()

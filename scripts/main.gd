@@ -6,6 +6,8 @@ const UI := preload("res://scripts/ui/ui.gd")
 var screen: Control = null
 var _layer: Control
 var _toasts: VBoxContainer
+var _fade: ColorRect = null
+var _fade_tw: Tween = null
 const MAX_TOASTS := 3
 
 
@@ -46,6 +48,23 @@ func goto(name: String) -> void:
 	UI.full(s)
 	_layer.add_child(s)
 	screen = s
+	_fade_in()
+
+
+## Новый экран проявляется из темноты (смена экрана остаётся мгновенной для кода).
+func _fade_in() -> void:
+	if _fade == null:
+		_fade = ColorRect.new()
+		_fade.color = UI.BG
+		UI.full(_fade)
+		_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_fade)
+		move_child(_fade, _toasts.get_index())
+	if _fade_tw != null:
+		_fade_tw.kill()
+	_fade.modulate.a = 1.0
+	_fade_tw = _fade.create_tween()
+	_fade_tw.tween_property(_fade, "modulate:a", 0.0, 0.22).set_trans(Tween.TRANS_QUAD)
 
 
 ## Короткое сообщение сверху. kind: info, good (золотая рамка), bad (красная).

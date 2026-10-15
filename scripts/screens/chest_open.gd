@@ -88,12 +88,46 @@ func _pop(n: Control) -> void:
 	tw.tween_property(n, "scale", Vector2.ONE, 0.08)
 
 
+## Карта переворачивается лицом; редкие и выше — со вспышкой и искрами цвета редкости.
+func _flip(n: Control, rar: String) -> void:
+	n.pivot_offset = n.custom_minimum_size / 2
+	n.scale = Vector2(0.0, 1.0)
+	n.modulate = Color(2, 2, 2) if rar != "common" else Color.WHITE
+	var tw := n.create_tween()
+	tw.tween_property(n, "scale", Vector2(1.08, 1.08), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(n, "scale", Vector2.ONE, 0.1)
+	tw.parallel().tween_property(n, "modulate", Color.WHITE, 0.3)
+	if rar != "common":
+		var col: Color = Data.RARITY_COLORS.get(rar, UI.GOLD)
+		var count: int = {"rare": 14, "epic": 22, "legendary": 34}.get(rar, 10)
+		_burst.call_deferred(n, [col, col.lightened(0.5), Color.WHITE], int(count))
+
+
+## Разлёт пиксельных искр из центра узла.
+func _burst(n: Control, colors: Array, count: int) -> void:
+	var c := n.get_global_rect().get_center() - get_global_rect().position
+	for i in count:
+		var px := ColorRect.new()
+		px.size = Vector2(8, 8) if i % 2 else Vector2(6, 6)
+		px.color = colors[i % colors.size()]
+		px.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		px.position = c
+		add_child(px)
+		var ang := randf() * TAU
+		var to := c + Vector2(cos(ang), sin(ang)) * randf_range(120, 300)
+		var tw := px.create_tween()
+		tw.tween_property(px, "position", to, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(px, "modulate:a", 0.0, 0.6).set_delay(0.2)
+		tw.tween_callback(px.queue_free)
+
+
 func _gold() -> void:
 	_clear()
 	Sfx.play("combo")
 	var ic := UI.icon("chests/%s_open" % c.type, 20)
 	_stage.add_child(UI.center(ic))
 	_pop(ic)
+	_burst.call_deferred(ic, [UI.GOLD, Color("#ffe08a"), Color("#c47b25")], 24)
 	var g := UI.stat("coin", "+%d золота" % int(c.gold), UI.GOLD, 48)
 	g.alignment = BoxContainer.ALIGNMENT_CENTER
 	_stage.add_child(g)
@@ -120,7 +154,7 @@ func _card(s: Dictionary, left: int) -> void:
 		holder.add_child(nl)
 	var cv := UI.card_view(id, false, 320, lvl)
 	holder.add_child(UI.center(cv))
-	_pop(cv)
+	_flip(cv, rar)
 	holder.add_child(UI.label("×%d" % int(s.n), 48, Data.RARITY_COLORS.get(rar, UI.TEXT), HORIZONTAL_ALIGNMENT_CENTER))
 	holder.add_child(UI.label(Data.RARITY_NAMES.get(rar, ""), 22, Data.RARITY_COLORS.get(rar, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER))
 	var n := Progress.need(id)

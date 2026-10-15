@@ -852,14 +852,69 @@ func _where_used(id: String) -> String:
 
 
 func _do_upgrade(id: String, ov: Control) -> void:
+	var before := Progress.level_of(id)
 	if not Progress.upgrade(id):
 		return
 	ov.queue_free()
 	Sfx.play("combo")
-	Game.main.toast("%s: уровень %d!" % [Data.card_name(id), Progress.level_of(id)], "good")
+	Game.vibrate(60)
 	_build_top()
 	_show(tab)
 	card_detail(id)
+	_level_up_fx(id, before, Progress.level_of(id))
+
+
+## Праздник улучшения: вспышка, карта подпрыгивает, «УР 3 → УР 4», золотые искры.
+func _level_up_fx(id: String, from_lvl: int, to_lvl: int) -> void:
+	var layer := Control.new()
+	UI.full(layer)
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.z_index = 60
+	add_child(layer)
+	var flash := ColorRect.new()
+	flash.color = Color(1, 0.85, 0.4, 0.45)
+	UI.full(flash)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(flash)
+	var box := UI.vbox(6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic := UI.card_icon(id, 10)
+	box.add_child(UI.center(ic))
+	var l := Label.new()
+	l.text = "УР %d → УР %d" % [from_lvl, to_lvl]
+	l.add_theme_font_override("font", UI.pixel_font())
+	l.add_theme_font_size_override("font_size", 40)
+	l.add_theme_color_override("font_color", UI.GOLD)
+	l.add_theme_color_override("font_outline_color", UI.INK)
+	l.add_theme_constant_override("outline_size", 10)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(l)
+	var cc := CenterContainer.new()
+	UI.full(cc)
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cc.add_child(box)
+	layer.add_child(cc)
+	box.pivot_offset = Vector2(160, 80)
+	box.scale = Vector2(0.3, 0.3)
+	var tw := layer.create_tween()
+	tw.tween_property(box, "scale", Vector2(1.15, 1.15), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(flash, "modulate:a", 0.0, 0.4)
+	tw.tween_property(box, "scale", Vector2.ONE, 0.1)
+	tw.tween_interval(0.6)
+	tw.tween_property(layer, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(layer.queue_free)
+	for i in 26:
+		var px := ColorRect.new()
+		px.size = Vector2(8, 8) if i % 2 else Vector2(6, 6)
+		px.color = [UI.GOLD, Color("#ffe08a"), Color.WHITE][i % 3]
+		px.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var c := get_viewport_rect().size / 2
+		px.position = c
+		layer.add_child(px)
+		var ang := randf() * TAU
+		var ptw := px.create_tween()
+		ptw.tween_property(px, "position", c + Vector2(cos(ang), sin(ang)) * randf_range(140, 320), 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		ptw.parallel().tween_property(px, "modulate:a", 0.0, 0.7).set_delay(0.25)
 
 
 # ================================================================ вкладка «Магазин»
