@@ -466,7 +466,8 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	v.add_child(top)
 	top.add_child(cost_badge(int(d.cost)))
 	var name_text: String = Data.card_name(id, up)
-	var nm := label(name_text, _name_size(name_text, w), GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	var nm := label(name_text, 24, GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	nm.add_theme_font_size_override("font_size", _name_size(name_text, w))
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	nm.clip_text = true
@@ -525,10 +526,11 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 
 ## Размер шрифта названия: длинные названия мельче, чтобы влезали в одну строку.
 static func _name_size(text: String, w: int) -> int:
-	var base := 24 if w >= 190 else 16
-	if w >= 190 and w < 280 and text.length() > 10:
-		base = 20 if text.length() <= 13 else 16
-	return base
+	if w >= 280:
+		return 28
+	if text.length() <= 9:
+		return 26 if w >= 190 else 22
+	return 22 if text.length() <= 13 and w >= 190 else 18
 
 
 # ---------------------------------------------------------------- эффекты карты значками
@@ -737,21 +739,41 @@ static func mini_card(c: Dictionary, w: int, h: int, cost_override: int = -1) ->
 	var v := vbox(2)
 	p.add_child(v)
 	var cost := cost_override if cost_override >= 0 else int(d.cost)
+	# Шапка: стоимость слева, редкость справа.
 	var head := hbox(2)
 	head.add_child(cost_badge(cost))
 	var sp := spacer(0)
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
-	if lvl > 1:
-		head.add_child(level_badge(lvl, 16))
 	var gem := rarity_gem(d.rarity, 3)
 	gem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(gem)
 	v.add_child(head)
-	var ic := card_icon(c.id, 4)
-	ic.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(ic)
-	var nm := label(Data.card_name(c.id, up), 16, GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	# Картинка одного размера у всех карт; уровень — табличкой внизу картинки.
+	var art := PanelContainer.new()
+	art.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Картинка одного размера у всех мини-карт; табличка уровня компактная.
+	var ic := card_icon(c.id, 4 if w < 140 else 5)
+	ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	# С уровнем картинка прижата вверх, чтобы табличка под ней её не закрывала.
+	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if lvl > 1 else Control.SIZE_SHRINK_CENTER
+	art.add_child(ic)
+	if lvl > 1:
+		var lb := level_badge(lvl, 8)
+		lb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		lb.size_flags_vertical = Control.SIZE_SHRINK_END
+		art.add_child(lb)
+	v.add_child(art)
+	# Название всегда в одну строку.
+	var name_text: String = Data.card_name(c.id, up)
+	var nm := label(name_text, 16, GREEN if up else TEXT, HORIZONTAL_ALIGNMENT_CENTER, false)
+	# Размер задаём напрямую (label() не даёт шрифту быть меньше 24): длинные — мельче.
+	var nl := name_text.length()
+	nm.add_theme_font_size_override("font_size", 22 if nl <= 8 else (18 if nl <= 11 else 15))
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.custom_minimum_size = Vector2(10, 0)
 	v.add_child(nm)
 	if c.get("temp_up", false):
 		p.add_theme_stylebox_override("panel", frame("slot_ok", 6))
@@ -825,7 +847,8 @@ static func level_badge(lvl: int, size: int = 16) -> PanelContainer:
 	var l := Label.new()
 	l.text = "УР %d" % lvl
 	l.add_theme_font_override("font", pixel_font())
-	l.add_theme_font_size_override("font_size", pfs(size))
+	# Компактная табличка (size < 16) — 16 px, обычная — 24 px; оба кратны 8 для чёткости.
+	l.add_theme_font_size_override("font_size", 24 if size >= 16 else 16)
 	l.add_theme_color_override("font_color", Color.WHITE if maxed else GOLD)
 	l.add_theme_color_override("font_outline_color", INK)
 	l.add_theme_constant_override("outline_size", 4)
