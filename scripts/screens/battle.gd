@@ -345,6 +345,17 @@ func _refresh_cells() -> void:
 			cl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			content.add_child(cl)
 			continue
+		var m: String = b.cell_mod(i)
+		if m != "":
+			var info: Array = b.CELL_MODS[m]
+			var col := Color(info[3])
+			(cp.get_node("Floor") as CanvasItem).modulate = Color.WHITE.lerp(col, 0.35)
+			var badge := PanelContainer.new()
+			badge.add_theme_stylebox_override("panel", UI.style(Color(0.08, 0.06, 0.1, 0.85), 0, col, 2, 3))
+			badge.add_child(UI.label(info[1], 16, col, HORIZONTAL_ALIGNMENT_CENTER, false))
+			badge.position = Vector2(6, 30)
+			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			content.add_child(badge)
 		var c = b.cells[i]
 		if c == null:
 			continue
@@ -458,6 +469,13 @@ func _update_hint() -> void:
 		hint.add_theme_color_override("font_color", UI.TEXT)
 	elif b.phase == "prep":
 		text = "Тяни карты на клетки. Удержи — описание"
+		var mods := []
+		for i in b.corridor_len:
+			if b.cell_mod(i) != "":
+				mods.append("%d — %s" % [i + 1, b.CELL_MODS[b.cell_mod(i)][0]])
+		if not mods.is_empty():
+			text = "Особые клетки: " + ", ".join(mods) + ". Коснись клетки — описание"
+			hint.add_theme_color_override("font_color", UI.GOLD)
 	hint.text = text
 
 
@@ -549,6 +567,8 @@ func _tap(kind: String, idx: int) -> void:
 	if b.phase != "prep":
 		if kind == "cell" and b.cells[idx] != null:
 			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
+		elif kind == "cell":
+			_cell_info(idx)
 		return
 	if kind == "hand":
 		if idx >= b.hand.size():
@@ -574,6 +594,17 @@ func _tap(kind: String, idx: int) -> void:
 			_refresh()
 		elif b.cells[idx] != null:
 			UI.card_popup(self, b.cells[idx].id, b.card_up(b.cells[idx]), b.card_lvl(b.cells[idx]))
+		else:
+			_cell_info(idx)
+
+
+## Описание особой клетки.
+func _cell_info(idx: int) -> void:
+	var m: String = b.cell_mod(idx)
+	if m == "":
+		return
+	var info: Array = b.CELL_MODS[m]
+	UI.info_popup(self, "Клетка %d: %s" % [idx + 1, info[0]], info[2])
 
 
 func _long_press(kind: String, idx: int) -> void:
@@ -769,7 +800,7 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 			"dmg":
 				if not quiet:
 					_float_at_hero(int(e.hero), "-%d" % int(e.n), UI.RED if e.kind != "poison" else UI.GREEN, 30)
-					if int(e.n) >= 10:
+					if int(e.n) >= 100:
 						_shake()
 						Game.vibrate(60)
 						Sfx.play("big")
@@ -805,6 +836,14 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 			"combo":
 				if not quiet:
 					_combo(int(e.n))
+			"react":
+				Sfx.play("combo", 1.4)
+				_float_at_hero(int(e.hero), str(e.text), UI.GOLD, 36)
+				if not quiet:
+					_shake()
+			"reward":
+				Sfx.play("coin")
+				Game.main.toast(str(e.text))
 			"phase2":
 				_phase2(e)
 			"msg":

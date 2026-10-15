@@ -3,6 +3,7 @@ extends Node
 ## процент побед, этаж, остаток Казны (= золото для прокачки) и Души.
 ## Запуск: godot --headless --path . res://tools/balance_sim.tscn -- levels=1,4,8 runs=6 notoriety=0
 ## Не запускайте два прогона одновременно: они пишут в одно сохранение.
+## off=combo,reactions,cells — выключить механики боя, чтобы оценить их вклад.
 ## Бот слабее человека: смотрите на разницу между уровнями, а не на абсолютные числа.
 
 const Smoke := preload("res://tools/smoke_test.gd")
@@ -12,11 +13,13 @@ var bot
 
 
 func _ready() -> void:
-	var args := {"levels": "1,4,8", "runs": "4", "notoriety": "0", "masters": ""}
+	var args := {"levels": "1,4,8", "runs": "4", "notoriety": "0", "masters": "", "off": ""}
 	for a in OS.get_cmdline_user_args():
 		var kv: PackedStringArray = a.split("=")
 		if kv.size() == 2:
 			args[kv[0]] = kv[1]
+	if args.off != "":
+		load("res://scripts/core/battle.gd").disabled = Array(args.off.split(","))
 	main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(main)
 	await get_tree().process_frame

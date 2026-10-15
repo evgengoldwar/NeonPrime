@@ -7,6 +7,8 @@ const META_PATH := "user://meta.json"
 const RUN_PATH := "user://run.json"
 const BATTLE_SCRIPT := "res://scripts/core/battle.gd"
 
+## Герои чуть крепче: у подземелья есть комбо, реакции и особые клетки.
+const HERO_HP_MULT := 1.1
 const NODE_WEIGHTS := {"battle": 45, "elite": 12, "shop": 12, "altar": 10, "event": 16, "treasure": 5}
 const NODE_NAMES := {"battle": "Бой", "elite": "Элита", "shop": "Магазин гоблина", "altar": "Алтарь тьмы",
 	"event": "Событие", "treasure": "Сокровищница", "boss": "Босс"}
@@ -644,7 +646,7 @@ func make_squad(f: int, row: int) -> Array:
 
 func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 	var d: Dictionary = Data.hero_def(id)
-	var hp := float(d.hp)
+	var hp := float(d.hp) * HERO_HP_MULT
 	var greed := float(d.greed)
 	var atk := int(d.atk)
 	var kind: String = d.kind

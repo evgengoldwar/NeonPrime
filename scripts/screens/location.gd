@@ -2,6 +2,7 @@ extends Control
 ## Выбор локации текущего этажа.
 
 const UI := preload("res://scripts/ui/ui.gd")
+const BattleScript := preload("res://scripts/core/battle.gd")
 
 
 func _ready() -> void:
@@ -37,6 +38,11 @@ func _ready() -> void:
 		v.add_child(UI.label(l.name, 32, Color(l.light)))
 		v.add_child(UI.label(l.desc, 16, UI.DIM))
 		v.add_child(UI.label(l.rule_text, 16, UI.GOLD))
+		var mods := []
+		for m in l.get("cell_mods", []):
+			mods.append(BattleScript.CELL_MODS[m][0])
+		if not mods.is_empty():
+			v.add_child(UI.label("Особые клетки: " + ", ".join(mods), 16, UI.SOUL))
 		var locals := []
 		for h in l.locals:
 			var hd: Dictionary = Data.hero_def(h)

@@ -15,7 +15,24 @@ const SAVE_PROPS := [
 	"dark", "hall", "phase", "tick_no", "discount", "next_discount", "combo", "best_combo",
 	"souls", "killed", "escaped", "gold_delta", "mine_cell", "hall_state", "zombie_revived",
 	"tutorial", "tutorial_hands", "result", "is_boss", "node_type",
+	"cell_mods", "next_dark_bonus", "next_draw_bonus",
 ]
+## Награды за комбо в зале: порог → что даёт (каждая 1 раз за зал).
+const COMBO_REWARDS := [[4, "dark"], [6, "draw"], [9, "gold"]]
+const COMBO_GOLD := 50
+## Особые клетки коридора: [название, коротко на клетке, описание, цвет].
+const CELL_MODS := {
+	"dark": ["Тёмная клетка", "ТЬМА −1", "Карта на этой клетке стоит на 1 Тьму меньше", "#9d6bff"],
+	"blood": ["Алтарь крови", "КРОВЬ +10", "Монстр на этой клетке получает +10 к Атаке", "#e43b44"],
+	"pit": ["Ловчая яма", "ЯМА ×2", "Ловушка на этой клетке срабатывает дважды", "#c47b25"],
+	"chest": ["Сундук", "СУНДУК", "Герой задерживается на 1 тик и получает +10 Жадности", "#feae34"],
+	"draft": ["Сквозняк", "СКВОЗНЯК", "Гасит Горение героя, который сюда вошёл", "#b9aed2"],
+	"lava": ["Лава", "ЛАВА", "Герой, вошедший сюда, получает Горение 10", "#f77622"],
+	"ice": ["Лёд", "ЛЁД", "Герой, вошедший сюда, получает Замедление 1", "#2ce8f5"],
+	# Клетки на стороне героев: их надо обходить расстановкой.
+	"spring": ["Источник", "ИСТОЧНИК", "Герой, вошедший сюда, лечит 40 HP", "#63c74d"],
+	"holy": ["Святая земля", "СВЯТАЯ", "Ловушка на этой клетке наносит вдвое меньше урона", "#f4f0ff"],
+}
 
 var heroes := []
 var cells := []
@@ -44,6 +61,9 @@ var tutorial_hands := []
 var result := ""             # win / escaped / lose
 var is_boss := false
 var node_type := "battle"
+var cell_mods := ["", "", "", "", "", ""]
+var next_dark_bonus := 0
+var next_draw_bonus := 0
 
 var events := []
 var _depth := 0
@@ -141,8 +161,19 @@ func _begin_prep() -> void:
 	phase = "prep"
 	discount = next_discount
 	next_discount = 0
-	dark = base_dark()
-	hall_state = {"resin_used": false, "necro_used": false, "circle": {}}
+	dark = base_dark() + next_dark_bonus
+	var extra_draw := next_draw_bonus
+	var bonus := []
+	if next_dark_bonus > 0:
+		bonus.append("+%d Тьма" % next_dark_bonus)
+	if next_draw_bonus > 0:
+		bonus.append("+%d карта" % next_draw_bonus)
+	if not bonus.is_empty():
+		events.append({"t": "msg", "text": "Награда за комбо: " + ", ".join(bonus)})
+	next_dark_bonus = 0
+	next_draw_bonus = 0
+	hall_state = {"resin_used": false, "necro_used": false, "circle": {}, "combo_got": [], "once": {}}
+	_roll_cell_mods()
 	if tutorial and hall < tutorial_hands.size():
 		for c in hand:
 			discard.append(c)
@@ -150,7 +181,7 @@ func _begin_prep() -> void:
 		for id in tutorial_hands[hall]:
 			hand.append({"uid": Game.next_uid(), "id": id, "up": false})
 	else:
-		draw(hand_size() - hand.size())
+		draw(hand_size() - hand.size() + extra_draw)
 	if Game.run.get("master", "") == "smith":
 		var traps := []
 		for c in hand:
@@ -170,6 +201,35 @@ func _begin_prep() -> void:
 		h.delay = order * 2
 		order += 1
 	events.append({"t": "prep", "hall": hall})
+
+
+## Особые клетки зала: 1 в первом зале, 1–2 в следующих. Набор зависит от локации.
+func _roll_cell_mods() -> void:
+	cell_mods = ["", "", "", "", "", ""]
+	if tutorial or off("cells"):
+		return
+	var pool: Array = Data.locations.get(str(Game.run.get("location", "")), {}).get("cell_mods", [])
+	if pool.is_empty():
+		return
+	var n := 1 if hall == 0 else Game.rint(1, 2)
+	var free := []
+	for i in corridor_len:
+		free.append(i)
+	Game.shuffle(free)
+	for k in mini(n, free.size()):
+		cell_mods[free[k]] = Game.rpick(pool)
+
+
+## Отключённые механики боя (для балансовых прогонов: balance_sim off=combo,cells).
+static var disabled := []
+
+
+static func off(feature: String) -> bool:
+	return feature in disabled
+
+
+func cell_mod(idx: int) -> String:
+	return cell_mods[idx] if idx >= 0 and idx < cell_mods.size() else ""
 
 
 func draw(n: int) -> void:
@@ -203,6 +263,11 @@ func card_cost(c) -> int:
 	return maxi(0, int(def_of(c).cost) - discount)
 
 
+## Стоимость карты на конкретной клетке (Тёмная клетка дешевле на 1).
+func card_cost_at(c, cell_idx: int) -> int:
+	return maxi(0, card_cost(c) - (1 if cell_mod(cell_idx) == "dark" else 0))
+
+
 func can_place(hand_idx: int, cell_idx: int) -> bool:
 	if phase != "prep" or hand_idx < 0 or hand_idx >= hand.size():
 		return false
@@ -217,14 +282,14 @@ func can_place(hand_idx: int, cell_idx: int) -> bool:
 		if old.locked:
 			return false
 		budget += int(old.paid)
-	return budget >= card_cost(c)
+	return budget >= card_cost_at(c, cell_idx)
 
 
 func place(hand_idx: int, cell_idx: int) -> bool:
 	if not can_place(hand_idx, cell_idx):
 		return false
 	var c = hand[hand_idx]
-	var cost := card_cost(c)
+	var cost := card_cost_at(c, cell_idx)
 	hand.remove_at(hand_idx)
 	var old = cells[cell_idx]
 	if old != null:
@@ -493,6 +558,7 @@ func tick() -> void:
 			best_combo = combo
 			if combo >= 5:
 				Game.unlock_achievement("combo5")
+		_combo_rewards()
 	else:
 		combo = 0
 	if Game.run.treasury <= 0:
@@ -506,6 +572,42 @@ func tick() -> void:
 			busy = true
 	if not busy:
 		_end_hall()
+
+
+## Награды за длинное комбо: ×3 — Тьма в следующем зале, ×5 — карта, ×8 — золото.
+func _combo_rewards() -> void:
+	if off("combo"):
+		return
+	var got: Array = hall_state.get("combo_got", [])
+	for r in COMBO_REWARDS:
+		if combo < int(r[0]) or int(r[0]) in got:
+			continue
+		got.append(int(r[0]))
+		match r[1]:
+			"dark":
+				next_dark_bonus += 1
+				events.append({"t": "reward", "text": "Комбо ×%d: +1 Тьма в следующем зале" % int(r[0])})
+			"draw":
+				next_draw_bonus += 1
+				events.append({"t": "reward", "text": "Комбо ×%d: +1 карта в следующем зале" % int(r[0])})
+			"gold":
+				_gold(COMBO_GOLD, "")
+				events.append({"t": "reward", "text": "Цепная реакция! +%d золота" % COMBO_GOLD})
+	hall_state["combo_got"] = got
+
+
+## «Однократно за зал» для реакций и клеток: true, если ключ ещё не использован.
+func _once(key: String) -> bool:
+	var o: Dictionary = hall_state.get("once", {})
+	if o.has(key):
+		return false
+	o[key] = true
+	hall_state["once"] = o
+	return true
+
+
+func _react(h: Dictionary, text: String) -> void:
+	events.append({"t": "react", "hero": h.uid, "text": text})
 
 
 func _hero_tick(h: Dictionary) -> void:
@@ -579,6 +681,9 @@ func _step(h: Dictionary) -> void:
 func _trigger_enter(h: Dictionary, idx: int) -> void:
 	if _depth > 8 or idx < 0 or idx >= corridor_len:
 		return
+	_cell_enter(h, idx)
+	if h.hp <= 0 or h.state != "walk":
+		return
 	var c = cells[idx]
 	if c == null:
 		if idx == mine_cell:
@@ -589,6 +694,31 @@ func _trigger_enter(h: Dictionary, idx: int) -> void:
 	_depth += 1
 	_enter_card(h, idx, c)
 	_depth -= 1
+
+
+## Особая клетка срабатывает, когда герой на неё входит (1 раз за зал на героя).
+func _cell_enter(h: Dictionary, idx: int) -> void:
+	var m := cell_mod(idx)
+	if m == "" or m in ["dark", "blood", "pit", "holy"]:
+		return
+	if not _once("cell%d_%d" % [idx, int(h.uid)]):
+		return
+	match m:
+		"chest":
+			h.hold += 1
+			h.greed += 10
+			_status(h, "Сундук: Жадность +10")
+		"draft":
+			if h.burn > 0:
+				h.burn = 0
+				_status(h, "Сквозняк гасит огонь")
+		"lava":
+			_apply_burn(h, 10)
+		"ice":
+			_apply_slow(h, 1, false)
+		"spring":
+			_heal(h, 40)
+			_status(h, "Источник: +40 HP")
 
 
 func _enter_card(h: Dictionary, idx: int, c: Dictionary) -> void:
@@ -668,6 +798,8 @@ func _trigger_times(idx: int, d: Dictionary) -> int:
 		times *= 2
 	if idx == 5 and corridor_len == 6 and Game.has_relic("hourglass"):
 		times *= 2
+	if d.type == "trap" and cell_mod(idx) == "pit":
+		times *= 2
 	return times
 
 
@@ -700,6 +832,8 @@ func _action(a: Dictionary, h: Dictionary, idx: int, c) -> void:
 				n *= int(a.adj_trap_mult)
 			if a.has("if_slowed_mult") and h.slow > 0:
 				n *= int(a.if_slowed_mult)
+			if is_trap and cell_mod(idx) == "holy":
+				n /= 2
 			_damage(h, n, "trap" if is_trap else "monster", c.uid if c != null else -1)
 		"slow":
 			if a.has("if_greed") and h.greed < int(a.if_greed):
@@ -787,6 +921,10 @@ func _apply_slow(h: Dictionary, n: int, from_card: bool) -> void:
 	if _has_trait(h, "agile"):
 		h.slow = mini(h.slow, 1)
 	_status(h, "Замедление %d" % h.slow)
+	# Реакция «Заморозка»: Замедление 3 и больше сковывает героя на 2 тика.
+	if h.slow >= 3 and not off("reactions") and _once("freeze_%d" % int(h.uid)):
+		h.hold += 2
+		_react(h, "Заморозка!")
 
 
 func _apply_fear(h: Dictionary) -> void:
@@ -813,6 +951,7 @@ func _apply_poison(h: Dictionary, n: int) -> void:
 		return
 	h.poison += n
 	_status(h, "Яд %d" % h.poison)
+	_check_boom(h)
 
 
 func _apply_burn(h: Dictionary, n: int) -> void:
@@ -827,6 +966,14 @@ func _apply_burn(h: Dictionary, n: int) -> void:
 		h.slow = 0
 		_status(h, "Лёд тает: Замедление снято")
 	_status(h, "Горение %d" % h.burn)
+	_check_boom(h)
+
+
+## Реакция «Взрыв»: Яд и Горение на одном герое — Яд сразу наносит урон ещё раз.
+func _check_boom(h: Dictionary) -> void:
+	if h.poison > 0 and h.burn > 0 and h.hp > 0 and not off("reactions") and _once("boom_%d" % int(h.uid)):
+		_react(h, "Взрыв!")
+		_damage(h, h.poison, "poison", -1)
 
 
 func _heal(h: Dictionary, n: int) -> void:
@@ -847,7 +994,12 @@ func _damage(h: Dictionary, n: int, kind: String, src_uid: int) -> int:
 		_status(h, "Благословение: 0 урона")
 		return 0
 	if h.vuln > 0 and not is_status:
-		n = int(ceil(n * 1.5))
+		# Реакция «Пробой»: удар Монстра по Уязвимому герою — ×2 вместо ×1,5.
+		if kind == "monster" and not off("reactions"):
+			n *= 2
+			_react(h, "Пробой ×2!")
+		else:
+			n = int(ceil(n * 1.5))
 		h.vuln = 0
 	if not h.first_hit_done:
 		h.first_hit_done = true
@@ -1007,6 +1159,8 @@ func monster_atk(idx: int, h) -> int:
 	if Game.has_relic("blood_ruby"):
 		a += 10
 	a += int(c.hall_atk)
+	if cell_mod(idx) == "blood":
+		a += 10
 	return a
 
 

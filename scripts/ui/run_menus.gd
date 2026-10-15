@@ -2,6 +2,7 @@ extends RefCounted
 ## Общие окна забега: Колода (с фильтрами), Реликвии, Пауза.
 
 const UI := preload("res://scripts/ui/ui.gd")
+const BattleScript := preload("res://scripts/core/battle.gd")
 
 
 static func deck(parent: Node, cards: Array = [], heading: String = "Колода") -> void:
@@ -115,6 +116,25 @@ static func relics(parent: Node) -> void:
 		p.box.add_child(UI.label("Рост яйца дракона: %d" % int(Game.run.egg_growth), 18, UI.GOLD))
 
 
+## Шпаргалка: реакции, награды за комбо и особые клетки.
+static func rules(parent: Node) -> void:
+	var p := UI.popup(parent, "Правила боя")
+	var sc := UI.scroll()
+	sc.custom_minimum_size = Vector2(0, 760)
+	p.box.add_child(sc)
+	var v := UI.vbox(8)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(v)
+	v.add_child(UI.label("Реакции (1 раз за зал на героя)", 24, UI.GOLD))
+	v.add_child(UI.label("Взрыв: Яд + Горение на одном герое — Яд сразу бьёт ещё раз.\nЗаморозка: Замедление 3 и больше — герой скован ещё на 2 тика.\nПробой: удар Монстра по Уязвимому герою — ×2 вместо ×1,5.", 20))
+	v.add_child(UI.label("Комбо (срабатывания тик за тиком)", 24, UI.GOLD))
+	v.add_child(UI.label("×4 — +1 Тьма в следующем зале\n×6 — +1 карта в следующем зале\n×9 — +50 золота в Казну", 20))
+	v.add_child(UI.label("Особые клетки (меняются каждый зал)", 24, UI.GOLD))
+	for k in BattleScript.CELL_MODS.keys():
+		var info: Array = BattleScript.CELL_MODS[k]
+		v.add_child(UI.label("%s: %s" % [info[0], info[2]], 20, Color(info[3])))
+
+
 static func pause(parent: Node, on_resume: Callable = Callable()) -> void:
 	var p := UI.popup(parent, "Пауза", "")
 	var ov: Control = p.overlay
@@ -131,6 +151,7 @@ static func pause(parent: Node, on_resume: Callable = Callable()) -> void:
 	p.box.add_child(UI.button("Продолжить", resume))
 	p.box.add_child(UI.button("Колода", func(): deck(parent)))
 	p.box.add_child(UI.button("Реликвии", func(): relics(parent)))
+	p.box.add_child(UI.button("Правила боя", func(): rules(parent)))
 	var snd := CheckButton.new()
 	snd.text = "Звук"
 	snd.add_theme_font_size_override("font_size", 24)
