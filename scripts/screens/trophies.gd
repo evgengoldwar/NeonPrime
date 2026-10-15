@@ -81,14 +81,11 @@ func _portrait_input(ev: InputEvent, hero_id: String, got: bool) -> void:
 
 
 func _show(id: String, got: bool) -> void:
-	var d: Dictionary = Data.hero_def(id)
 	if not got:
 		UI.info_popup(self, "???", "Этот герой ещё не убит. Убей его, чтобы повесить портрет на стену.")
 		return
-	var text := "HP %d · Атака %d · Жадность %d\n%s\nСлабость: %s" % [int(d.hp), int(d.atk), int(d.greed), d.trait_text, d.weakness]
-	if d.has("phase2_text"):
-		text += "\nФаза 2: " + d.phase2_text
+	var extra := ""
 	for c in Data.collections:
 		if c.id == id:
-			text += "\n\nКоллекция: " + c.text + (" (собрана)" if Game.has_collection(id) else " (нужны обычный и элитный)")
-	UI.info_popup(self, d.name, text)
+			extra = c.text + (" (собрана)" if Game.has_collection(id) else " (нужны обычный и элитный)")
+	UI.hero_popup(self, id, {}, extra)

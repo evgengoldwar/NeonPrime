@@ -673,20 +673,7 @@ func _show_hero(uid: int) -> void:
 	var h: Dictionary = b.hero_by_uid(uid)
 	if h.is_empty():
 		return
-	var d: Dictionary = Data.hero_def(h.id)
-	var lines := []
-	lines.append("HP %d/%d · Атака %d · Жадность %d · Броня %d" % [maxi(0, h.hp), h.max_hp, h.atk + 10 * h.rage, h.greed, h.armor])
-	lines.append("Черта: " + d.get("trait_text", ""))
-	if d.has("phase2_text"):
-		lines.append("Фаза 2 (HP < 50%): " + d.phase2_text)
-	for mid in h.mods:
-		var md: Dictionary = Data.elite_mod(mid)
-		lines.append(md.get("name", "") + ": " + md.get("text", ""))
-	lines.append("Слабость: " + d.get("weakness", ""))
-	var st := _status_text(h)
-	if st != "":
-		lines.append("Статусы: " + st)
-	UI.info_popup(self, h.name, "\n".join(lines))
+	UI.hero_popup(self, h.id, h)
 
 
 # ---------------------------------------------------------------- перетаскивание

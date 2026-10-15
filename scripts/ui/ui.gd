@@ -997,7 +997,14 @@ static func popup(parent: Node, heading: String, close_text: String = "Закр�
 	if heading != "":
 		v.add_child(title(heading, 32))
 	var body := vbox(10)
-	v.add_child(body)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Высокое содержимое прокручивается, кнопка «Закрыть» всегда видна.
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.add_child(body)
+	v.add_child(sc)
+	var max_h: float = maxf(300.0, parent.get_viewport().get_visible_rect().size.y - 280.0)
+	body.minimum_size_changed.connect(func(): sc.custom_minimum_size.y = minf(body.get_combined_minimum_size().y, max_h))
 	if close_text != "":
 		v.add_child(button(close_text, func(): ov.queue_free()))
 	return {"overlay": ov, "box": body, "root": v}
@@ -1023,3 +1030,144 @@ static func card_popup(parent: Node, id: String, up: bool, lvl: int = 1) -> void
 		p.box.add_child(label(help, 16, DIM))
 	if not up and Data.cards[id].has("up"):
 		p.box.add_child(label("Версия «+»: " + Data.card_text(id, true), 16, GREEN))
+
+
+# ---------------------------------------------------------------- карточка героя
+
+const KEYWORD_ICONS := {
+	"Замедление": "slow", "Страх": "fear", "Яд": "poison", "Горение": "burn",
+	"Уязвимость": "vuln", "Оглушение": "stun", "Проклятие": "curse", "Засада": "sword",
+}
+const KEYWORD_COLORS := {
+	"Замедление": Color("#7fc8ff"), "Страх": Color("#c159c9"), "Яд": Color("#63c74d"),
+	"Горение": Color("#f77622"), "Уязвимость": Color("#e43b44"), "Оглушение": Color("#feae34"),
+	"Проклятие": Color("#9d6bff"),
+}
+
+
+## Подробная карточка героя: портрет, характеристики значками, блоки черты,
+## второй фазы, элитных свойств и слабости, затем справка по терминам.
+## h — живой герой из боя (текущие HP, броня, статусы) или {} для справочника.
+static func hero_popup(parent: Node, id: String, h: Dictionary = {}, extra: String = "") -> void:
+	var d: Dictionary = Data.hero_def(id)
+	var p := popup(parent, "")
+	var box: VBoxContainer = p.box
+	# Шапка: портрет и имя с характеристиками
+	var head := hbox(16)
+	var port := PanelContainer.new()
+	port.add_theme_stylebox_override("panel", style(INK, 0, Color(d.get("color", "#6b5a8a")), 4, 8))
+	port.add_child(hero_icon(id, 7))
+	port.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(port)
+	var hv := vbox(8)
+	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hv.alignment = BoxContainer.ALIGNMENT_CENTER
+	var nm := label(h.get("name", d.get("name", "???")), 24, GOLD, HORIZONTAL_ALIGNMENT_LEFT, false)
+	nm.add_theme_font_override("font", pixel_font())
+	nm.add_theme_font_size_override("font_size", 32)
+	hv.add_child(nm)
+	var stats := HFlowContainer.new()
+	stats.add_theme_constant_override("h_separation", 18)
+	stats.add_theme_constant_override("v_separation", 6)
+	var hp_txt := str(int(d.get("hp", 0)))
+	var atk := int(d.get("atk", 0))
+	var greed := int(d.get("greed", 0))
+	if not h.is_empty():
+		hp_txt = "%d/%d" % [maxi(0, int(h.hp)), int(h.max_hp)]
+		atk = int(h.atk) + 10 * int(h.get("rage", 0))
+		greed = int(h.greed)
+	stats.add_child(chip("heart", hp_txt, RED, 26, 3))
+	stats.add_child(chip("sword", str(atk), TEXT, 26, 3))
+	stats.add_child(chip("greed", str(greed), GOLD, 26, 3))
+	if not h.is_empty() and int(h.armor) > 0:
+		stats.add_child(chip("armor", str(int(h.armor)), Color("#9fb4cf"), 26, 3))
+	hv.add_child(stats)
+	head.add_child(hv)
+	box.add_child(head)
+	var all_text := ""
+	# Статусы в бою
+	if not h.is_empty():
+		var st := HFlowContainer.new()
+		st.add_theme_constant_override("h_separation", 14)
+		for s in [["slow", "slow", "Замедление"], ["poison", "poison", "Яд"], ["burn", "burn", "Горение"],
+				["vuln", "vuln", "Уязвимость"], ["stun", "stun", "Оглушение"], ["curse", "curse", "Проклятие"]]:
+			var n := int(h.get(s[0], 0))
+			if n > 0:
+				all_text += " " + str(s[2])
+				st.add_child(chip(s[1], str(n) if s[0] != "vuln" and s[0] != "stun" else "", KEYWORD_COLORS.get(s[2], TEXT), 24, 3))
+		if st.get_child_count() > 0:
+			box.add_child(_hero_block("СЕЙЧАС НА НЁМ", Color("#7fc8ff"), "", "", st))
+	# Черта
+	var tt: String = d.get("trait_text", "")
+	var tparts := tt.split(": ", true, 1)
+	if tparts.size() == 2:
+		var desc: String = tparts[1]
+		box.add_child(_hero_block("ЧЕРТА", GOLD, tparts[0], desc.left(1).to_upper() + desc.substr(1)))
+	elif tt != "":
+		box.add_child(_hero_block("ЧЕРТА", GOLD, "", tt))
+	all_text += tt
+	if d.has("phase2_text"):
+		box.add_child(_hero_block("ФАЗА 2 · HP < 50%", RED, "", d.phase2_text))
+		all_text += " " + str(d.phase2_text)
+	for mid in h.get("mods", []):
+		var md: Dictionary = Data.elite_mod(mid)
+		box.add_child(_hero_block("ЭЛИТА", DARK, md.get("name", ""), md.get("text", "")))
+		all_text += " " + str(md.get("text", ""))
+	if d.get("weakness", "") != "":
+		box.add_child(_hero_block("КАК ПОБЕДИТЬ", GREEN, "", d.weakness))
+		all_text += " " + str(d.weakness)
+	if extra != "":
+		box.add_child(_hero_block("КОЛЛЕКЦИЯ", SOUL, "", extra))
+	# Термины: значок, слово цветом и короткое пояснение
+	var terms := []
+	for k in Data.KEYWORDS.keys():
+		if all_text.find(k) != -1:
+			terms.append(k)
+	if not terms.is_empty():
+		var tv := vbox(6)
+		for k in terms:
+			var row := hbox(8)
+			var col: Color = KEYWORD_COLORS.get(k, DIM)
+			if KEYWORD_ICONS.has(k):
+				var ic := icon("icons/" + KEYWORD_ICONS[k], 3)
+				ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+				row.add_child(ic)
+			var l := RichTextLabel.new()
+			l.bbcode_enabled = true
+			l.fit_content = true
+			l.scroll_active = false
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			l.add_theme_font_size_override("normal_font_size", 18)
+			l.add_theme_font_size_override("bold_font_size", 18)
+			l.add_theme_color_override("default_color", DIM)
+			l.text = "[b][color=#%s]%s[/color][/b] — %s" % [col.to_html(false), k, Data.KEYWORDS[k]]
+			row.add_child(l)
+			tv.add_child(row)
+		box.add_child(_hero_block("ТЕРМИНЫ", DIM, "", "", tv))
+
+
+## Блок с цветной полосой слева: ярлык, жирное название и текст (или свой узел).
+static func _hero_block(caption: String, col: Color, heading: String, text: String, content: Control = null) -> Control:
+	var outer := hbox(0)
+	var bar := ColorRect.new()
+	bar.color = col
+	bar.custom_minimum_size = Vector2(6, 0)
+	outer.add_child(bar)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", style(col.darkened(0.82), 0, Color.TRANSPARENT, 0, 12))
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(p)
+	var v := vbox(6)
+	p.add_child(v)
+	var cap := tag(caption, col, 16)
+	cap.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	v.add_child(cap)
+	if heading != "":
+		v.add_child(label(heading, 26, col.lightened(0.3)))
+	if text != "":
+		v.add_child(label(text, 22, TEXT))
+	if content != null:
+		v.add_child(content)
+	return outer
