@@ -1627,7 +1627,8 @@ def card_frame(kind):
     return hexmap_render(["".join(r) for r in rows], cmap, "card_" + kind)
 
 
-GEM = ["..kkk..", ".kLCCk.", "kLCCCCk", "kCCCCDk", ".kCCDk.", "..kDk..", "...k..."]
+# Гранёный кристалл: плоская верхняя грань, пояс, острый низ.
+GEM = ["..kkkkk..", ".kLLCCDk.", "kLLLCCCDk", "kkkkkkkkk", ".kCCCCDk.", "..kCCDk..", "...kDk...", "....k...."]
 RARITY_GEMS = {
     "common": {"C": "#b0b0b0", "L": "#f4f0ff", "D": "#6b6577"},
     "rare": {"C": "#4a9ae0", "L": "#9fd0ff", "D": "#234d8c"},

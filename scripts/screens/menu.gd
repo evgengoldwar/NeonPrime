@@ -557,6 +557,7 @@ func _deck() -> void:
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	body.add_child(head)
+	body.add_child(UI.label("Кристалл в углу картинки — редкость: серый обычная, синий редкая, фиолетовый эпическая, золотой легендарная.", 16, UI.DIM))
 	# Улучшить всё, на что хватает копий и золота.
 	var plan := _upgrade_plan()
 	if not plan.is_empty():
