@@ -91,6 +91,9 @@ func _build_top() -> void:
 	badge.add_child(UI.label("Ур. %d" % int(Game.meta.plevel), 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, false))
 	lv.add_child(badge)
 	lv.add_child(UI.progress_bar(int(Game.meta.xp), Progress.xp_need(), 110, UI.SOUL, "%d/%d" % [int(Game.meta.xp), Progress.xp_need()], 20))
+	UI.ignore_mouse(lv)
+	lv.mouse_filter = Control.MOUSE_FILTER_STOP
+	lv.gui_input.connect(_level_input)
 	h.add_child(lv)
 	var sp := UI.spacer(0)
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -99,6 +102,28 @@ func _build_top() -> void:
 	h.add_child(UI.stat("gem", str(int(Game.meta.gems)), UI.GREEN, 32))
 	h.add_child(UI.stat("soul", str(int(Game.meta.souls)), UI.SOUL, 32))
 	h.add_child(UI.icon_button("icons/gear", func(): Game.main.goto("settings"), 5, 64))
+
+
+func _level_input(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+		Sfx.play("click")
+		_level_help()
+
+
+## Что даёт уровень игрока и как его поднять.
+func _level_help() -> void:
+	var lvl := int(Game.meta.plevel)
+	var per := int(Data.prog.player_level_treasury)
+	var p := UI.popup(self, "Уровень игрока %d" % lvl)
+	p.box.add_child(UI.label("Каждый уровень после первого: +%d к стартовой Казне в каждом забеге." % per, 22, UI.TEXT))
+	p.box.add_child(UI.stat("coin", "Сейчас: +%d к Казне" % Progress.treasury_bonus(), UI.GOLD, 26))
+	p.box.add_child(UI.stat("coin", "На уровне %d: +%d к Казне" % [lvl + 1, Progress.treasury_bonus() + per], UI.GREEN, 22))
+	p.box.add_child(UI.center(UI.progress_bar(int(Game.meta.xp), Progress.xp_need(), 520, UI.SOUL, "Опыт: %d/%d" % [int(Game.meta.xp), Progress.xp_need()], 32)))
+	var xp: Array = Data.prog.upgrade_xp
+	var parts := []
+	for i in xp.size():
+		parts.append("до ур.%d — %d" % [i + 2, int(xp[i])])
+	p.box.add_child(UI.label("Опыт дают улучшения карт во вкладке «Карты»:\n" + ", ".join(parts) + ".", 20, UI.DIM))
 
 
 func _build_tabs() -> void:
