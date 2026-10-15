@@ -544,27 +544,158 @@ func _upgradable_count() -> int:
 	return n
 
 
+const CARD_SORTS := [["sets", "Наборы"], ["up", "Улучшить"], ["level", "Уровень"], ["rarity", "Редкость"], ["cost", "Тьма"]]
+const CARD_TYPES := [["", "Все"], ["trap", "Ловушки"], ["monster", "Монстры"], ["room", "Комнаты"], ["spell", "Закл."]]
+static var cards_sort := "sets"
+static var cards_type := ""
+
+
 func _deck() -> void:
 	var body := _page()
 	var head := UI.hbox()
 	var t := _section("Карты: найдено %d из %d" % [Game.meta.collection.size(), Progress.collectible_ids().size()])
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
-	var up := _upgradable_count()
-	if up > 0:
-		head.add_child(UI.label("Можно улучшить: %d" % up, 20, UI.GREEN, HORIZONTAL_ALIGNMENT_RIGHT, false))
 	body.add_child(head)
-	body.add_child(UI.label("Уровень карты действует во всех забегах. Копии выпадают из сундуков, золото — остаток Казны.", 18, UI.DIM))
-	_group(body, "Базовые · у всех Хозяев", "", _ids_of_set("base"), false)
-	for w in Data.wings:
-		var open := Game.wing_unlocked(w.id)
-		var title := "Крыло «%s» · Хозяин %s" % [w.name, Data.masters[w.master].name]
-		var note := "" if open else "Закрыто: открой крыло во вкладке Замок за %d Душ" % int(w.cost)
-		_group(body, title, note, _ids_of_set(w.id), not open)
-	for l in Data.location_list:
-		var ids := _ids_of_set("loc_" + str(l.id))
-		if not ids.is_empty():
-			_group(body, "Локация «%s» · только в ней" % l.name, "", ids, false)
+	# Улучшить всё, на что хватает копий и золота.
+	var plan := _upgrade_plan()
+	if not plan.is_empty():
+		var ub := UI.button("Улучшить всё: %d карт за %d золота" % [plan.size(), _plan_cost(plan)], _upgrade_all, 22, 64)
+		UI.tint_button(ub, UI.GREEN)
+		body.add_child(ub)
+	# Сортировка и фильтр по типу.
+	body.add_child(_segmented(CARD_SORTS, cards_sort, _set_sort))
+	body.add_child(_segmented(CARD_TYPES, cards_type, _set_type))
+	if cards_sort == "sets":
+		_group(body, "Базовые · у всех Хозяев", "", _filtered(_ids_of_set("base")), false)
+		for w in Data.wings:
+			var open := Game.wing_unlocked(w.id)
+			var title := "Крыло «%s» · Хозяин %s" % [w.name, Data.masters[w.master].name]
+			var note := "" if open else "Закрыто: открой крыло во вкладке Замок за %d Душ" % int(w.cost)
+			_group(body, title, note, _filtered(_ids_of_set(w.id)), not open)
+		for l in Data.location_list:
+			_group(body, "Локация «%s» · только в ней" % l.name, "", _filtered(_ids_of_set("loc_" + str(l.id))), false)
+		return
+	var ids := _filtered(Progress.collectible_ids())
+	if cards_sort == "up":
+		var ready := []
+		for id in ids:
+			if Progress.ready_to_upgrade(id):
+				ready.append(id)
+		ids = ready
+		if ids.is_empty():
+			body.add_child(UI.label("Пока нечего улучшать: не хватает копий. Открывай сундуки — копии выпадают из них.", 20, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
+			return
+	ids.sort_custom(_sort_cmp)
+	var g := _grid()
+	for id in ids:
+		g.add_child(_coll_card(id) if Progress.owned(id) else _hidden_card(id, not id in Progress.droppable_ids()))
+	body.add_child(g)
+
+
+## Ряд кнопок-переключателей; выбранная — золотая.
+func _segmented(items: Array, current: String, cb: Callable) -> HBoxContainer:
+	var h := UI.hbox(4)
+	for it in items:
+		var b := UI.button(it[1], cb.bind(it[0]), 18, 52)
+		if it[0] == current:
+			UI.tint_button(b, UI.GOLD)
+		h.add_child(b)
+	return h
+
+
+func _set_sort(id: String) -> void:
+	cards_sort = id
+	_show("deck")
+
+
+func _set_type(id: String) -> void:
+	cards_type = id
+	_show("deck")
+
+
+func _filtered(ids: Array) -> Array:
+	if cards_type == "":
+		return ids
+	var out := []
+	for id in ids:
+		if Data.cards[id].type == cards_type:
+			out.append(id)
+	return out
+
+
+## Порядок для режимов «Уровень», «Редкость», «Тьма», «Улучшить». Ненайденные — в конце.
+func _sort_cmp(a: String, b: String) -> bool:
+	var oa := Progress.owned(a)
+	var ob := Progress.owned(b)
+	if oa != ob:
+		return oa
+	var ca: Dictionary = Data.cards[a]
+	var cb: Dictionary = Data.cards[b]
+	match cards_sort:
+		"up":
+			var aa := Progress.can_upgrade(a)
+			var ab := Progress.can_upgrade(b)
+			if aa != ab:
+				return aa
+			if Progress.gold_cost(a) != Progress.gold_cost(b):
+				return Progress.gold_cost(a) < Progress.gold_cost(b)
+		"level":
+			if Progress.level_of(a) != Progress.level_of(b):
+				return Progress.level_of(a) > Progress.level_of(b)
+			var pa := float(Progress.copies(a)) / maxf(1.0, Progress.need(a))
+			var pb := float(Progress.copies(b)) / maxf(1.0, Progress.need(b))
+			if pa != pb:
+				return pa > pb
+		"rarity":
+			var ra: int = RARITY_ORDER.get(ca.rarity, 9)
+			var rb: int = RARITY_ORDER.get(cb.rarity, 9)
+			if ra != rb:
+				return ra < rb
+		"cost":
+			if int(ca.cost) != int(cb.cost):
+				return int(ca.cost) < int(cb.cost)
+	return str(ca.name) < str(cb.name)
+
+
+## Какие улучшения можно сделать прямо сейчас (дешёвые первыми, с учётом общего золота).
+func _upgrade_plan() -> Array:
+	var cand := []
+	for id in Game.meta.collection.keys():
+		if Progress.ready_to_upgrade(id):
+			cand.append(id)
+	cand.sort_custom(func(a, b): return Progress.gold_cost(a) < Progress.gold_cost(b))
+	var gold := int(Game.meta.gold)
+	var out := []
+	for id in cand:
+		var c := Progress.gold_cost(id)
+		if c <= gold:
+			gold -= c
+			out.append(id)
+	return out
+
+
+func _plan_cost(plan: Array) -> int:
+	var total := 0
+	for id in plan:
+		total += Progress.gold_cost(id)
+	return total
+
+
+func _upgrade_all() -> void:
+	var done := 0
+	var changed := true
+	while changed:
+		changed = false
+		for id in _upgrade_plan():
+			if Progress.upgrade(id):
+				done += 1
+				changed = true
+	if done > 0:
+		Sfx.play("combo")
+		Game.main.toast("Улучшено карт: %d" % done, "good")
+	_build_top()
+	_show("deck")
 
 
 func _ids_of_set(set_id: String) -> Array:
@@ -577,6 +708,8 @@ func _ids_of_set(set_id: String) -> Array:
 
 
 func _group(body: VBoxContainer, title: String, note: String, ids: Array, locked: bool) -> void:
+	if ids.is_empty():
+		return
 	var found := 0
 	for id in ids:
 		if Progress.owned(id):
