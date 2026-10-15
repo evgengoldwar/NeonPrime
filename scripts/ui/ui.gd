@@ -458,7 +458,7 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	var p := framed(card_frame(id, w < 190), 18 if w >= 280 else 14)
 	# Большие карточки (окно карты) ниже: иначе под текстом пустое поле.
 	# Высота с запасом под самый длинный текст: все карточки одного размера.
-	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.78)))
+	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.6)))
 	var v := vbox(6)
 	p.add_child(v)
 	# Шапка: стоимость и название в одну строку.
@@ -501,16 +501,23 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 		lb.size_flags_vertical = Control.SIZE_SHRINK_END
 		art.add_child(lb)
 	v.add_child(art)
-	# Текст не раздувает карточку: все карточки одного размера.
-	var txt := label(Data.card_text(id, up, lvl), 20 if w >= 280 else 16, TEXT)
-	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	txt.max_lines_visible = 6 if w >= 280 else 5
-	v.add_child(txt)
+	# Монстр: здоровье и атака крупно сразу под картинкой.
 	if d.type == "monster":
-		var sh := hbox(16)
-		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED))
-		sh.add_child(stat("sword", "=Жадн." if d.get("special", "") == "mimic" else str(int(d.get("atk", 0))), TEXT))
+		var sh := hbox(18)
+		sh.alignment = BoxContainer.ALIGNMENT_CENTER
+		sh.add_child(stat("heart", str(int(d.get("hp", 0))), RED, 28))
+		if d.get("special", "") == "mimic":
+			var mh := hbox(2)
+			mh.add_child(stat("sword", "=", TEXT, 28))
+			mh.add_child(icon("icons/greed", 3))
+			sh.add_child(mh)
+		else:
+			sh.add_child(stat("sword", str(int(d.get("atk", 0))), TEXT, 28))
 		v.add_child(sh)
+	# Эффекты значками вместо текста: «ВХОД: [удар] 35 ×2 за [замедление]».
+	var fx := card_effects(d, w)
+	fx.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(fx)
 	ignore_mouse(p)
 	p.tooltip_text = Data.card_name(id, up) + "\n" + Data.card_text(id, up, lvl)
 	return p
@@ -522,6 +529,184 @@ static func _name_size(text: String, w: int) -> int:
 	if w >= 190 and w < 280 and text.length() > 10:
 		base = 20 if text.length() <= 13 else 16
 	return base
+
+
+# ---------------------------------------------------------------- эффекты карты значками
+
+const TRIGGERS := [
+	["ambush", "ЗАСАДА", "#e43b44"], ["enter", "ВХОД", "#feae34"], ["exit", "ВЫХОД", "#b9aed2"],
+	["aura", "АУРА", "#c159c9"], ["on_hit", "УДАР", "#f77622"], ["death", "СМЕРТЬ", "#8b7fa3"],
+	["play", "СРАЗУ", "#3e8ed0"],
+]
+const ACTION_ICONS := {
+	"damage": "hit", "poison": "poison", "burn": "burn", "slow": "slow", "fear": "fear", "stun": "stun",
+	"vuln": "vuln", "curse": "curse", "greed": "greed", "gold": "coin", "dark": "dark", "draw": "draw",
+	"hold": "hold", "knockback": "back", "repeat_prev": "repeat", "return_to_hand": "hand",
+	"return_monster": "hand", "double_poison": "poison", "monsters_hp": "heart",
+}
+const ACTION_COLORS := {
+	"damage": RED, "poison": GREEN, "burn": Color("#f77622"), "slow": SOUL, "curse": DARK,
+	"greed": GOLD, "gold": GOLD, "dark": DARK, "monsters_hp": RED,
+}
+## Особые механики, которые не выразить значками, — одна короткая строка.
+const SPECIAL_NOTES := {
+	"dark_altar": "Ловушки рядом: +%d урона",
+	"mimic": "Атака равна Жадности героя",
+	"zombie": "1 раз за бой встаёт с 30 HP",
+	"necro_circle": "Соседний Монстр встаёт с ½ HP · %d раз за зал",
+	"lich": "Все твои Монстры +20 к Атаке",
+	"catalyst": "Яд на героях рядом бьёт дважды",
+	"cauldron": "Герой погиб от Яда: +%d золота",
+	"wolf": "+10 к Атаке за каждого другого Волка",
+	"pack_leader": "Волки и Крысы рядом: +20 HP, +10 к Атаке",
+	"gear": "Ловушки рядом срабатывают дважды",
+	"no_heal": "Не лечится между залами",
+	"dragon_egg": "Растёт, когда гибнут герои · Рост %d → Дракон",
+	"usurper_crown": "Следующий зал: карты на 1 Тьму дешевле",
+}
+
+
+# Масштаб значков для карточки, которая сейчас строится (крупная или мелкая).
+static var _fx_scale := 3
+static var _fx_font := 20
+static var _fx_small := 16
+static var _fx_tag := 12
+
+
+## Маленькая табличка-ярлык пиксельным шрифтом («ВХОД», «1 РАЗ»).
+static func tag(text: String, color: Color, size: int = 12) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := style(color.darkened(0.7), 0, color, 2, 0)
+	sb.content_margin_left = 4
+	sb.content_margin_right = 4
+	p.add_theme_stylebox_override("panel", sb)
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_override("font", pixel_font())
+	l.add_theme_font_size_override("font_size", pfs(size))
+	l.add_theme_color_override("font_color", color.lightened(0.25))
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	p.add_child(l)
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return p
+
+
+## Значок с числом или коротким словом.
+static func chip(icon_name: String, text: String, color: Color = TEXT, size: int = 20, scale: int = 3) -> HBoxContainer:
+	var h := hbox(2)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var i := icon("icons/" + icon_name, scale)
+	i.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(i)
+	if text != "":
+		var l := label(text, size, color, HORIZONTAL_ALIGNMENT_LEFT, false)
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.add_theme_color_override("font_outline_color", INK)
+		l.add_theme_constant_override("outline_size", 4)
+		h.add_child(l)
+	return h
+
+
+static func _small(text: String) -> Label:
+	var l := label(text, _fx_small, DIM, HORIZONTAL_ALIGNMENT_LEFT, false)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return l
+
+
+## Значки одного действия карты (с условиями и множителями).
+## Значок с числом в масштабе текущей карточки.
+static func _chip(icon_name: String, text: String, color: Color = TEXT, size: int = 20) -> HBoxContainer:
+	return chip(icon_name, text, color, size + _fx_font - 20, _fx_scale)
+
+
+static func _action_chips(a: Dictionary) -> Array:
+	var out := []
+	var kind: String = a.a
+	var n := int(a.get("n", 0))
+	var col: Color = ACTION_COLORS.get(kind, TEXT)
+	if a.get("if_burning", false):
+		out.append(_small("если"))
+		out.append(_chip("burn", ""))
+	if a.has("if_greed"):
+		out.append(_small("если"))
+		out.append(_chip("greed", "≥%d" % int(a.if_greed), GOLD, 18))
+	match kind:
+		"damage":
+			if a.has("cell_mult"):
+				out.append(_chip("hit", "%d × №клетки" % int(a.cell_mult), col, 18))
+			else:
+				out.append(_chip("hit", str(n), col))
+		"fear", "stun", "vuln":
+			out.append(_chip(ACTION_ICONS[kind], ""))
+		"greed", "gold", "dark", "draw", "monsters_hp":
+			if kind == "monsters_hp":
+				out.append(icon("icons/type_monster", _fx_scale - 1))
+			out.append(_chip(ACTION_ICONS[kind], "+%d" % n, col))
+		"repeat_prev":
+			out.append(_chip("repeat", "клетка выше", TEXT, 18))
+		"return_to_hand":
+			out.append(_chip("hand", "в руку", TEXT, 18))
+		"return_monster":
+			out.append(_chip("hand", "Монстр из сброса", TEXT, 18))
+		"double_poison":
+			out.append(_chip("poison", "×2", col))
+		"hold":
+			out.append(_chip("hold", "+%d тика" % n, TEXT, 18))
+		_:
+			out.append(_chip(ACTION_ICONS.get(kind, "hit"), str(n) if n > 0 else "", col))
+	if a.has("slow_mult"):
+		out.append(_small("×%d за каждый" % int(a.slow_mult)))
+		out.append(_chip("slow", ""))
+	if a.has("adj_trap_mult"):
+		out.append(_small("×%d рядом с" % int(a.adj_trap_mult)))
+		out.append(icon("icons/type_trap", _fx_scale - 1))
+	if a.has("if_slowed_mult"):
+		out.append(_small("×%d если" % int(a.if_slowed_mult)))
+		out.append(_chip("slow", ""))
+	if a.get("once", false):
+		out.append(tag("1 РАЗ", DIM, _fx_tag))
+	return out
+
+
+## Эффекты карты значками: строка на каждый момент срабатывания.
+static func card_effects(d: Dictionary, w: int) -> VBoxContainer:
+	var big := w >= 190
+	_fx_scale = 4 if big else 3
+	_fx_font = 26 if big else 20
+	_fx_small = 18 if big else 16
+	_fx_tag = 16 if big else 12
+	var v := vbox(6)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var flags := HFlowContainer.new()
+	flags.add_theme_constant_override("h_separation", 4)
+	if "permanent" in d.kw:
+		flags.add_child(tag("ПОСТОЯННАЯ", GOLD, _fx_tag))
+	if "once" in d.kw:
+		flags.add_child(tag("1 РАЗ ЗА ЗАЛ", DIM, _fx_tag))
+	if "burn" in d.kw:
+		flags.add_child(tag("СЖЕЧЬ", RED, _fx_tag))
+	if flags.get_child_count() > 0:
+		v.add_child(flags)
+	for t in TRIGGERS:
+		var acts: Array = d.get(t[0], [])
+		if acts.is_empty():
+			continue
+		var row := HFlowContainer.new()
+		row.add_theme_constant_override("h_separation", 6)
+		row.add_theme_constant_override("v_separation", 2)
+		row.add_child(tag(t[1], Color(t[2]), _fx_tag))
+		for a in acts:
+			for c in _action_chips(a):
+				row.add_child(c)
+		v.add_child(row)
+	var sp: String = d.get("special", "")
+	if SPECIAL_NOTES.has(sp):
+		var note: String = SPECIAL_NOTES[sp]
+		if note.find("%d") >= 0:
+			note = note % int(d.get("p", 0))
+		v.add_child(label(note, _fx_small, Color("#d8cfe8")))
+	return v
 
 
 ## Камень редкости: серый, синий, фиолетовый, золотой.
@@ -719,6 +904,7 @@ static func info_popup(parent: Node, heading: String, text: String) -> void:
 static func card_popup(parent: Node, id: String, up: bool, lvl: int = 1) -> void:
 	var p := popup(parent, "")
 	p.box.add_child(center(card_view(id, up, 320, lvl)))
+	p.box.add_child(label(Data.card_text(id, up, lvl), 20, TEXT))
 	var help: String = Data.keyword_help(Data.card_text(id, up))
 	if help != "":
 		p.box.add_child(label(help, 16, DIM))

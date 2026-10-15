@@ -795,7 +795,8 @@ func card_detail(id: String) -> void:
 	var ov: Control = p.overlay
 	p.box.add_child(UI.center(UI.card_view(id, false, 300, lvl)))
 	var c: Dictionary = Data.cards[id]
-	p.box.add_child(UI.label("%s · Уровень %d из %d" % [Data.RARITY_NAMES.get(c.rarity, ""), lvl, Progress.max_level()], 22, Data.RARITY_COLORS.get(c.rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER))
+	p.box.add_child(UI.label(Data.card_text(id, false, lvl), 20, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	p.box.add_child(UI.label("%s · %s · Уровень %d из %d" % [Data.TYPE_NAMES.get(c.type, ""), Data.RARITY_NAMES.get(c.rarity, ""), lvl, Progress.max_level()], 22, Data.RARITY_COLORS.get(c.rarity, UI.DIM), HORIZONTAL_ALIGNMENT_CENTER))
 	p.box.add_child(UI.label(_where_used(id), 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	if not Progress.owned(id):
 		var why := "Карта ещё не найдена. Выбей её из сундука."
