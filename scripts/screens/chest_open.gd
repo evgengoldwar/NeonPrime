@@ -17,9 +17,7 @@ func _ready() -> void:
 		Game.main.goto("menu")
 		return
 	UI.backdrop(self, "tiles/wall_menu", 0.6)
-	var m := UI.margin(24)
-	UI.full(m)
-	add_child(m)
+	var m := UI.column(self, 24)
 	var v := UI.vbox(12)
 	m.add_child(v)
 	var top := UI.hbox()

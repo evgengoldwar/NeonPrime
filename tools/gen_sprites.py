@@ -1476,6 +1476,16 @@ MENU_ICONS = {
         "knnnnnNk",
         ".kkkkkk.",
     ],
+    "pause": [
+        "kkk.kkk.",
+        "kwk.kwk.",
+        "kwk.kwk.",
+        "kwk.kwk.",
+        "kwk.kwk.",
+        "kwk.kwk.",
+        "kkk.kkk.",
+        "........",
+    ],
     "tab_battle": [
         "k......k",
         "kwk..kwk",

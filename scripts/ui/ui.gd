@@ -265,6 +265,27 @@ static func tint_button(b: Button, color: Color) -> Button:
 	return b
 
 
+## Колонка шириной с телефон по центру экрана: на планшете и в горизонтали
+## интерфейс не растягивается, а остаётся посередине.
+static func column(root: Control, pad: int = 12) -> MarginContainer:
+	var m := margin(pad)
+	m.anchor_left = 0.5
+	m.anchor_right = 0.5
+	m.anchor_bottom = 1.0
+	m.offset_left = -COLUMN / 2.0
+	m.offset_right = COLUMN / 2.0
+	root.add_child(m)
+	return m
+
+
+## Кнопка паузы со значком.
+static func pause_button(cb: Callable, size: int = 64) -> Button:
+	var b := icon_button("icons/pause", cb, 4, size)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return b
+
+
 ## Кнопка-картинка (без текста).
 static func icon_button(path: String, cb: Callable, scale: int = 3, min_size: int = 64) -> Button:
 	var b := button("", cb, 24, min_size)

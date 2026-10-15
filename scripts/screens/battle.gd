@@ -63,9 +63,7 @@ func _ready() -> void:
 func _build(loc: Dictionary) -> void:
 	var loc_id: String = loc.get("id", "cellar")
 	UI.backdrop(self, "tiles/wall_" + loc_id, 0.7)
-	var m := UI.margin(8)
-	UI.full(m)
-	add_child(m)
+	var m := UI.column(self, 8)
 	root_box = UI.vbox(8)
 	m.add_child(root_box)
 	# Верхняя панель
@@ -79,10 +77,7 @@ func _build(loc: Dictionary) -> void:
 	top_hall.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_hall.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	th.add_child(top_hall)
-	var pb := UI.button("II", _pause, 24, 56)
-	pb.custom_minimum_size = Vector2(64, 56)
-	pb.size_flags_horizontal = Control.SIZE_SHRINK_END
-	th.add_child(pb)
+	th.add_child(UI.pause_button(_pause, 56))
 	root_box.add_child(top)
 	# Герои
 	heroes_box = UI.hbox(8)
@@ -943,7 +938,7 @@ func _combo(n: int) -> void:
 	var l := UI.title("Комбо ×%d" % n, 44 + mini(n, 10) * 2)
 	fx_layer.add_child(l)
 	l.custom_minimum_size = Vector2(720, 0)
-	l.position = Vector2(0, 560)
+	l.position = Vector2((fx_layer.size.x - 720) / 2.0, fx_layer.size.y * 0.44)
 	l.pivot_offset = Vector2(360, 30)
 	l.scale = Vector2(0.6, 0.6)
 	var tw := l.create_tween()

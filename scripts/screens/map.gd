@@ -15,9 +15,7 @@ func _ready() -> void:
 	var loc: Dictionary = Data.locations[Game.run.location]
 	Sfx.music(0.85 + 0.05 * Data.location_list.find(loc))
 	UI.backdrop(self, "tiles/floor_" + str(loc.id), 0.6)
-	var m := UI.margin(12)
-	UI.full(m)
-	add_child(m)
+	var m := UI.column(self, 12)
 	var v := UI.vbox(10)
 	m.add_child(v)
 	v.add_child(UI.top_bar())
@@ -43,10 +41,7 @@ func _ready() -> void:
 	var buttons := UI.hbox(8)
 	buttons.add_child(UI.button("Колода %d" % Game.run.deck.size(), func(): RunMenus.deck(self), 24, 64))
 	buttons.add_child(UI.button("Реликвии %d" % Game.run.relics.size(), func(): RunMenus.relics(self), 24, 64))
-	var pause := UI.button("II", func(): RunMenus.pause(self), 24, 64)
-	pause.custom_minimum_size = Vector2(72, 64)
-	pause.size_flags_horizontal = Control.SIZE_SHRINK_END
-	buttons.add_child(pause)
+	buttons.add_child(UI.pause_button(func(): RunMenus.pause(self)))
 	v.add_child(buttons)
 	# Карта читается снизу вверх: прокручиваем к текущему ряду.
 	await get_tree().process_frame
