@@ -1557,10 +1557,6 @@ def frames():
         "btn_purple_hover": frame("#843a92", "k", "#e08ae6", "#3c1844"),
         "btn_blue": frame("#234d8c", "k", "#3e8ed0", "#132a4d"),
         "btn_blue_hover": frame("#2c5ea8", "k", "#6fb2ea", "#132a4d"),
-        "card_trap": frame("#1c1626", "#8b7fa3", "#2b2236", None),
-        "card_monster": frame("#1c1626", "#e43b44", "#2b2236", None),
-        "card_room": frame("#1c1626", "#c159c9", "#2b2236", None),
-        "card_spell": frame("#1c1626", "#3e8ed0", "#2b2236", None),
         "card_selected": frame("#2b2236", "#f4f0ff", "#45385a", None),
         "slot": frame("#00000000", "#2b2236", None, None),
         "slot_ok": frame("#63c74d22", "#63c74d", None, None),
@@ -1569,6 +1565,99 @@ def frames():
     }
     for k, img in out.items():
         save(img, "ui", k + ".png", scale=2)
+    card_art()
+
+
+# ============================================================ рамки карт, редкость, тип
+
+def hexmap_render(rows, cmap, name):
+    """Рисует шаблон, где буквы — ключи cmap (hex-цвета); '.' — прозрачно."""
+    w = len(rows[0])
+    img = Image.new("RGBA", (w, len(rows)), (0, 0, 0, 0))
+    for y, r in enumerate(rows):
+        if len(r) != w:
+            ERRORS.append(f"{name}: строка {y} длиной {len(r)}")
+        for x, ch in enumerate(r):
+            if ch != ".":
+                img.putpixel((x, y), hexrgb(cmap[ch]))
+    return img
+
+
+# Рамка карты 24×24: по краю — узор типа (повторяется при растяжении), в углах — украшение 6×6.
+CARD_BANDS = {   # 4 ряда от края внутрь, период 8: цветная полоса с узором
+    "trap": ["kkkkkkkk", "BBOOBBBB", "BBOOBBBB", "BBBBBBBB"],        # заклёпки
+    "monster": ["kkkkkkkk", "BBBBBBBB", "BwwwBBBB", "DDwDDDDD"],     # клыки
+    "room": ["kkkkkkkk", "BBBDBBBB", "BBBDBBBB", "DDDDDDDD"],        # кладка
+    "spell": ["kkkkkkkk", "BBBOOBBB", "BBBOOBBB", "BBBBBBBB"],       # светящиеся руны
+}
+CARD_CORNERS = {
+    "trap": ["kkkkkk", "kBBBBB", "kBwOBB", "kBOOBB", "kBBBFF", "kBBBFF"],
+    "monster": ["kkkkkk", "kBBBBB", "kBwwBB", "kBwwwD", "kBBwwF", "kBBDwF"],
+    "room": ["kkkkkk", "kOOOOB", "kOyyOB", "kOyyOD", "kOOOOF", "kBBDFF"],
+    "spell": ["..kkkk", ".kBOBB", "kBOOOB", "kBBOBB", "kBBBFF", "kBBBFF"],
+}
+CARD_COLORS = {
+    "trap": {"B": "#8b7fa3", "O": "#c2b8d6", "w": "#f4f0ff", "D": "#2b2236"},
+    "monster": {"B": "#e43b44", "w": "#f4f0ff", "D": "#5c1720"},
+    "room": {"B": "#c159c9", "O": "#feae34", "y": "#fff3b0", "D": "#3c1844"},
+    "spell": {"B": "#3e8ed0", "O": "#2ce8f5", "D": "#132a4d"},
+}
+
+
+def card_frame(kind):
+    n = 24
+    band = CARD_BANDS[kind]
+    rows = [["F"] * n for _ in range(n)]
+    for y in range(n):
+        for x in range(n):
+            # расстояние до ближайшего края и позиция вдоль этого края
+            d, along = min((y, x), (n - 1 - y, x), (x, y), (n - 1 - x, y))
+            if d < 4:
+                rows[y][x] = band[d][along % 8]
+    tl = CARD_CORNERS[kind]
+    for y in range(6):
+        for x in range(6):
+            ch = tl[y][x]
+            rows[y][x] = ch
+            rows[y][n - 1 - x] = ch
+            rows[n - 1 - y][x] = ch
+            rows[n - 1 - y][n - 1 - x] = ch
+    cmap = {"k": "#18141e", "F": "#1c1626", ".": "#00000000"}
+    cmap.update(CARD_COLORS[kind])
+    return hexmap_render(["".join(r) for r in rows], cmap, "card_" + kind)
+
+
+GEM = ["..kkk..", ".kLCCk.", "kLCCCCk", "kCCCCDk", ".kCCDk.", "..kDk..", "...k..."]
+RARITY_GEMS = {
+    "common": {"C": "#b0b0b0", "L": "#f4f0ff", "D": "#6b6577"},
+    "rare": {"C": "#4a9ae0", "L": "#9fd0ff", "D": "#234d8c"},
+    "epic": {"C": "#b060e0", "L": "#e08ae6", "D": "#6e2f7a"},
+    "legendary": {"C": "#f0a020", "L": "#ffe08a", "D": "#c47b25"},
+    "special": {"C": "#60c0a0", "L": "#a8f0d8", "D": "#2f7d5d"},
+}
+
+TYPE_ICONS = {
+    "trap": (["...k....", "..kGk...", "..kGk.k.", ".kGGGkGk", ".kGGGkGk", "kGGGGGGk", "kkkkkkkk", "........"],
+             {"k": "#18141e", "G": "#c2b8d6"}),
+    "monster": ([".kkkkkk.", "kwwwwwwk", "kwrwwrwk", "kwwwwwwk", ".kwwwwk.", ".kwkkwk.", "..k..k..", "........"],
+                {"k": "#18141e", "w": "#f4f0ff", "r": "#e43b44"}),
+    "room": (["..kkkk..", ".kPPPPk.", "kPppppPk", "kPppppPk", "kPpppyPk", "kPppppPk", "kPppppPk", "kkkkkkkk"],
+             {"k": "#18141e", "P": "#6e2f7a", "p": "#c159c9", "y": "#feae34"}),
+    "spell": (["..kkkk..", "...kk...", "..kbbk..", ".kbccbk.", "kbcccbbk", "kbccccbk", ".kbbbbk.", "..kkkk.."],
+              {"k": "#18141e", "b": "#3e8ed0", "c": "#2ce8f5"}),
+}
+
+
+def card_art():
+    for kind in CARD_CORNERS:
+        save(card_frame(kind), "ui", "card_" + kind + ".png", scale=3)
+        save(card_frame(kind), "ui", "card_" + kind + "_small.png", scale=2)
+    for r, cm in RARITY_GEMS.items():
+        m = {"k": "#18141e"}
+        m.update(cm)
+        save(hexmap_render(GEM, m, "gem_" + r), "rarity", r + ".png")
+    for t, (rows, cm) in TYPE_ICONS.items():
+        save(hexmap_render(rows, cm, "type_" + t), "icons", "type_" + t + ".png")
 
 
 # ============================================================ плитки (16×16, ×4)

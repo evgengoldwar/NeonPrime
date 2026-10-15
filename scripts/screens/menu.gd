@@ -330,7 +330,7 @@ func _arrow(text: String, d: int) -> Button:
 
 ## Значок карты колоды: рамка типа, картинка, уровень.
 func _deck_tile(id: String, lvl: int) -> Control:
-	var t := UI.framed(UI.card_frame(id), 3)
+	var t := UI.framed(UI.card_frame(id, true), 5)
 	t.custom_minimum_size = Vector2(62, 74)
 	var v := UI.vbox(0)
 	t.add_child(v)

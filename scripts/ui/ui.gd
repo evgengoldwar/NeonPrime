@@ -85,10 +85,18 @@ static func frame(name: String, pad: int = 12) -> StyleBox:
 		return style(PANEL, 0, INK, 2, pad)
 	var s := StyleBoxTexture.new()
 	s.texture = t
-	s.texture_margin_left = FRAME_MARGIN
-	s.texture_margin_right = FRAME_MARGIN
-	s.texture_margin_top = FRAME_MARGIN
-	s.texture_margin_bottom = FRAME_MARGIN
+	# Рамки карт: углы 8×8 (×3, мелкие ×2) не растягиваются, узор по краю повторяется.
+	var card := name.begins_with("card_") and name != "card_selected"
+	var mg := FRAME_MARGIN
+	if card:
+		mg = 16 if name.ends_with("_small") else 24
+	if card:
+		s.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_TILE_FIT
+		s.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_TILE_FIT
+	s.texture_margin_left = mg
+	s.texture_margin_right = mg
+	s.texture_margin_top = mg
+	s.texture_margin_bottom = mg
 	s.content_margin_left = pad
 	s.content_margin_right = pad
 	s.content_margin_top = pad
@@ -421,8 +429,9 @@ static func card_color(id: String) -> Color:
 	return Data.TYPE_COLORS.get(Data.cards.get(id, {}).get("type", "trap"), Color.GRAY)
 
 
-static func card_frame(id: String) -> String:
-	return "card_" + str(Data.cards.get(id, {}).get("type", "trap"))
+## Рамка типа карты. small — для мини-карт, клеток боя и значков.
+static func card_frame(id: String, small: bool = false) -> String:
+	return "card_" + str(Data.cards.get(id, {}).get("type", "trap")) + ("_small" if small else "")
 
 
 ## Значок стоимости: кристалл Тьмы с числом.
@@ -446,7 +455,7 @@ static func cost_badge(cost: int, size: int = 24) -> Control:
 ## Полная карточка (награды, магазин, колода).
 static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) -> PanelContainer:
 	var d: Dictionary = Data.cdef(id, up, lvl)
-	var p := framed(card_frame(id), 10)
+	var p := framed(card_frame(id, w < 190), 20 if w >= 190 else 14)
 	# Большие карточки (окно карты) ниже: иначе под текстом пустое поле.
 	p.custom_minimum_size = Vector2(w, int(w * (1.15 if w >= 280 else 1.45)))
 	var v := vbox(6)
@@ -462,11 +471,14 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 		var lb := level_badge(lvl, 16)
 		lb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		top.add_child(lb)
-	# Картинка крупная и растёт вместе с карточкой.
-	var art := framed("panel_dark", 4)
+	top.add_child(rarity_gem(d.rarity, 4 if w >= 190 else 3))
+	# Картинка крупная, фон и рамка картинки — цвета редкости.
+	var rc: Color = Data.RARITY_COLORS.get(d.rarity, DIM)
+	var art := PanelContainer.new()
+	art.add_theme_stylebox_override("panel", style(rc.darkened(0.82), 0, rc.darkened(0.25), 2, 4))
 	art.add_child(center(card_icon(id, clampi(w / 26, 5, 12))))
 	v.add_child(art)
-	v.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(d.type, ""), Data.RARITY_NAMES.get(d.rarity, "")], 16, Data.RARITY_COLORS.get(d.rarity, DIM)))
+	v.add_child(type_line(d.type, d.rarity, 16))
 	var txt := label(Data.card_text(id, up, lvl), 20 if w >= 280 else 16, TEXT)
 	txt.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(txt)
@@ -480,23 +492,44 @@ static func card_view(id: String, up: bool = false, w: int = 200, lvl: int = 1) 
 	return p
 
 
+## Камень редкости: серый, синий, фиолетовый, золотой.
+static func rarity_gem(rarity: String, scale: int = 3) -> TextureRect:
+	var g := icon("rarity/" + rarity, scale)
+	g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	g.tooltip_text = Data.RARITY_NAMES.get(rarity, "")
+	return g
+
+
+## Строка «[значок типа] Ловушка · Обычная» цветом редкости.
+static func type_line(type: String, rarity: String, size: int = 16) -> HBoxContainer:
+	var h := hbox(4)
+	var ic := icon("icons/type_" + type, 2)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(ic)
+	h.add_child(label("%s · %s" % [Data.TYPE_NAMES.get(type, ""), Data.RARITY_NAMES.get(rarity, "")], size, Data.RARITY_COLORS.get(rarity, DIM), HORIZONTAL_ALIGNMENT_LEFT, false))
+	return h
+
+
 ## Компактная карта для руки: стоимость, картинка, название.
 static func mini_card(c: Dictionary, w: int, h: int, cost_override: int = -1) -> PanelContainer:
 	var up: bool = c.get("up", false) or c.get("temp_up", false)
 	var lvl := int(c.get("lvl", 1))
 	var d: Dictionary = Data.cdef(c.id, up, lvl)
-	var p := framed(card_frame(c.id), 6)
+	var p := framed(card_frame(c.id, true), 10)
 	p.custom_minimum_size = Vector2(w, h)
 	var v := vbox(2)
 	p.add_child(v)
 	var cost := cost_override if cost_override >= 0 else int(d.cost)
 	var head := hbox(2)
 	head.add_child(cost_badge(cost))
+	var sp := spacer(0)
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(sp)
 	if lvl > 1:
-		var sp := spacer(0)
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		head.add_child(sp)
 		head.add_child(level_badge(lvl, 16))
+	var gem := rarity_gem(d.rarity, 3)
+	gem.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(gem)
 	v.add_child(head)
 	var ic := card_icon(c.id, 4)
 	ic.size_flags_vertical = Control.SIZE_EXPAND_FILL

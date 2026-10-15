@@ -369,7 +369,7 @@ func _cell_card(c: Dictionary, idx: int) -> Control:
 	var up: bool = b.card_up(c)
 	var d: Dictionary = b.def_of(c)
 	var h := UI.hbox(10)
-	var art := UI.framed(UI.card_frame(c.id), 4)
+	var art := UI.framed(UI.card_frame(c.id, true), 6)
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	art.add_child(UI.card_icon(c.id, 5))
 	h.add_child(art)
