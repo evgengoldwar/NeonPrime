@@ -424,8 +424,10 @@ func run_rewards(won: bool, run_state: Dictionary) -> Dictionary:
 		gems += int(P().gems.win)
 	if run_state.get("daily", false):
 		gems += int(P().gems.daily)
+	if run_state.get("final", false) and won:
+		gems += 100
 	var chest := run_chest(won, int(run_state.get("floor", 1)), int(run_state.get("notoriety", 0)),
-		run_state.get("chosen_killed", false))
+		run_state.get("chosen_killed", false) or (won and run_state.get("final", false)))
 	if run_state.get("tutorial", false):
 		chest = "wood"
 	Game.meta.gold = int(Game.meta.gold) + gold

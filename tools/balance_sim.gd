@@ -28,6 +28,9 @@ func _ready() -> void:
 	bot.auto = false
 	bot.main = main
 	add_child(bot)
+	if args.has("final"):
+		await _final_sim(args)
+		return
 	var masters: Array = []
 	for m in Data.master_list:
 		if args.masters == "" or m.id in args.masters.split(","):
@@ -69,6 +72,35 @@ func _ready() -> void:
 		print("BAL: ур.%d | %d/%d (%d%%) | %.2f | %.0f (%s–%s) | %.0f | %.1f" % [lvl, wins, n, 100 * wins / maxi(1, n),
 			float(floors) / n, avg_gold, str(gold.front()) if gold.size() > 0 else "-", str(gold.back()) if gold.size() > 0 else "-",
 			float(souls) / n, float(kills) / n])
+	get_tree().quit()
+
+
+## final=1: бот играет финальный бой. Печатает победы, этап и HP Императора.
+func _final_sim(args: Dictionary) -> void:
+	print("FIN: уровень | победы | ср.этап | ср.HP Императора в конце")
+	for lv_s in args.levels.split(","):
+		var lvl := int(lv_s)
+		var wins := 0
+		var stages := 0
+		var hp_left := 0.0
+		var n := int(args.runs)
+		for r in n:
+			_setup(lvl)
+			Game.start_final()
+			main.goto("battle")
+			await get_tree().process_frame
+			var BattleS = load("res://scripts/core/battle.gd")
+			BattleS.last_final = {}
+			bot.floor_cb = Callable()
+			await bot._drive(4000)
+			var st: Dictionary = BattleS.last_final
+			if Game.pending.get("won", false):
+				wins += 1
+			stages += int(st.get("stage", 0))
+			hp_left += float(st.get("hp", 1.0))
+			if args.has("verbose"):
+				print("FIN run ", r, " won=", Game.pending.get("won", false), " ", st)
+		print("FIN: ур.%d | %d/%d (%d%%) | %.1f | %.0f%%" % [lvl, wins, n, 100 * wins / maxi(1, n), float(stages) / n, 100.0 * hp_left / n])
 	get_tree().quit()
 
 

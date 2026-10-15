@@ -15,11 +15,22 @@ const SAVE_PROPS := [
 	"dark", "hall", "phase", "tick_no", "discount", "next_discount", "combo", "best_combo",
 	"souls", "killed", "escaped", "gold_delta", "mine_cell", "hall_state", "zombie_revived",
 	"tutorial", "tutorial_hands", "result", "is_boss", "node_type",
-	"cell_mods", "next_dark_bonus", "next_draw_bonus",
+	"cell_mods", "next_dark_bonus", "next_draw_bonus", "halls",
 ]
 ## Награды за комбо в зале: порог → что даёт (каждая 1 раз за зал).
 const COMBO_REWARDS := [[4, "dark"], [6, "draw"], [9, "gold"]]
 const COMBO_GOLD := 50
+## Финальный бой: этапы-залы с нарастающими усложнениями. [название, что меняется].
+const FINAL_STAGES := [
+	["Пролог", "Император входит в подземелье в Броне 150"],
+	["Свита", "Паладин-телохранитель вступает в бой"],
+	["Ослепляющий свет", "Самая дорогая карта в коридоре не срабатывает"],
+	["Вторая волна", "Маг и Лучник вступают в бой"],
+	["Затмение", "Коридор сокращается до 5 клеток, −1 Тьма"],
+	["Небесный суд", "Император замораживает 2 карты в коридоре"],
+	["Последний рассвет", "Император не боится Страха и делает 2 шага за ход"],
+]
+const FINAL_CELLS := ["holy", "spring", "holy", "dark", "pit", "blood"]
 ## Особые клетки коридора: [название, коротко на клетке, описание, цвет].
 const CELL_MODS := {
 	"dark": ["Тёмная клетка", "ТЬМА −1", "Карта на этой клетке стоит на 1 Тьму меньше", "#9d6bff"],
@@ -64,6 +75,7 @@ var node_type := "battle"
 var cell_mods := ["", "", "", "", "", ""]
 var next_dark_bonus := 0
 var next_draw_bonus := 0
+var halls := HALLS
 
 var events := []
 var _depth := 0
@@ -82,7 +94,9 @@ func setup(hero_list: Array, deck: Array, opts: Dictionary = {}) -> void:
 	tutorial = opts.get("tutorial", false)
 	tutorial_hands = opts.get("tutorial_hands", [])
 	node_type = opts.get("node_type", "battle")
-	is_boss = node_type == "boss"
+	is_boss = node_type == "boss" or node_type == "final"
+	if node_type == "final":
+		halls = FINAL_STAGES.size()
 	draw_pile = []
 	for c in deck:
 		draw_pile.append({"uid": c.uid, "id": c.id, "up": c.up, "lvl": int(c.get("lvl", 1))})
@@ -138,6 +152,8 @@ func hand_size() -> int:
 		n += 1
 	if Game.run.get("master", "") == "goblin_king":
 		n += 1
+	if node_type == "final":
+		n += 1
 	return mini(n, MAX_HAND)
 
 
@@ -154,6 +170,10 @@ func base_dark() -> int:
 	d += int(Game.run.get("floor_flags", {}).get("pact_dark", 0))
 	if Game.run.get("daily_mod", "") == "dark_first" and hall == 0:
 		d += 1
+	if node_type == "final":
+		d += 2
+		if hall >= 4:
+			d -= 1
 	return d
 
 
@@ -173,6 +193,8 @@ func _begin_prep() -> void:
 	next_dark_bonus = 0
 	next_draw_bonus = 0
 	hall_state = {"resin_used": false, "necro_used": false, "circle": {}, "combo_got": [], "once": {}}
+	if node_type == "final":
+		_final_stage()
 	_roll_cell_mods()
 	if tutorial and hall < tutorial_hands.size():
 		for c in hand:
@@ -209,6 +231,8 @@ func _roll_cell_mods() -> void:
 	if tutorial or off("cells"):
 		return
 	var pool: Array = Data.locations.get(str(Game.run.get("location", "")), {}).get("cell_mods", [])
+	if node_type == "final":
+		pool = FINAL_CELLS
 	if pool.is_empty():
 		return
 	var n := 1 if hall == 0 else Game.rint(1, 2)
@@ -220,8 +244,40 @@ func _roll_cell_mods() -> void:
 		cell_mods[free[k]] = Game.rpick(pool)
 
 
+## Начало этапа финального боя: подкрепления и изменения поля.
+func _final_stage() -> void:
+	var st: Array = FINAL_STAGES[mini(hall, FINAL_STAGES.size() - 1)]
+	events.append({"t": "stage", "n": hall, "total": halls, "name": st[0], "text": st[1]})
+	match hall:
+		1:
+			_reinforce(["paladin"])
+		3:
+			_reinforce(["mage", "archer"])
+		4:
+			corridor_len = 5
+			var c = cells[5]
+			if c != null:
+				if not c.get("innate", false):
+					hand.append(_strip(c))
+				cells[5] = null
+
+
+func _reinforce(ids: Array) -> void:
+	for id in ids:
+		var h: Dictionary = Game.make_hero(id, 3, 4, {"elite": true})
+		h.name = "Страж: " + str(h.name)
+		_init_hero(h)
+		heroes.append(h)
+
+
+func final_stage_name() -> String:
+	return str(FINAL_STAGES[mini(hall, FINAL_STAGES.size() - 1)][0])
+
+
 ## Отключённые механики боя (для балансовых прогонов: balance_sim off=combo,cells).
 static var disabled := []
+## Итог последнего финального боя (для балансового прогона).
+static var last_final := {}
 
 
 static func off(feature: String) -> bool:
@@ -519,6 +575,27 @@ func _before_hall(h: Dictionary) -> void:
 			if m >= 0:
 				_msg(h, "Ледяная стрела!")
 				_kill_monster(m, h)
+	if h.trait == "boss_final":
+		if hall == 0:
+			h.armor = maxi(h.armor, 150)
+		if hall == 2:
+			var best := -1
+			for i in corridor_len:
+				var c = cells[i]
+				if c != null and not c.disabled and (best < 0 or def_of(c).cost > def_of(cells[best]).cost):
+					best = i
+			if best >= 0:
+				cells[best].disabled = true
+				_msg(h, "Ослеплена: " + Data.card_name(cells[best].id))
+		if hall == 5:
+			var cand := _occupied()
+			Game.shuffle(cand)
+			for k in mini(2, cand.size()):
+				cells[cand[k]].frozen = true
+			if cand.size() > 0:
+				_msg(h, "Небесный суд замораживает карты")
+		if hall >= 6:
+			h.fast = true
 	if h.trait == "boss_chosen":
 		var traits: Array = Game.run.get("killed_traits", [])
 		if traits.size() > 0:
@@ -930,7 +1007,8 @@ func _apply_slow(h: Dictionary, n: int, from_card: bool) -> void:
 func _apply_fear(h: Dictionary) -> void:
 	if h.state != "walk" or tick_no >= MAX_HALL_TICKS:
 		return
-	if _has_trait(h, "light") or _has_trait(h, "boss_fearless") or _has_trait(h, "boss_king") or "fearless" in h.mods:
+	if _has_trait(h, "light") or _has_trait(h, "boss_fearless") or _has_trait(h, "boss_king") or "fearless" in h.mods \
+			or (h.trait == "boss_final" and hall >= 6):
 		_status(h, "Не боится")
 		return
 	_status(h, "Страх")
@@ -1027,7 +1105,19 @@ func _damage(h: Dictionary, n: int, kind: String, src_uid: int) -> int:
 		h.smoke_used = true
 		h.ignore_cards = 2
 		_msg(h, "Дымовая шашка!")
-	if h.get("boss", false) and h.phase == 1 and h.hp > 0 and h.hp * 2 < h.max_hp:
+	if h.trait == "boss_final":
+		if h.phase == 1 and h.hp > 0 and h.hp * 3 < h.max_hp * 2:
+			h.phase = 2
+			h.bless_left = 3
+			events.append({"t": "phase2", "hero": h.uid, "label": "ФАЗА 2", "text": "Щит рассвета: следующие 3 удара наносят 0 урона"})
+		elif h.phase == 2 and h.hp > 0 and h.hp * 3 < h.max_hp:
+			h.phase = 3
+			h.poison = 0
+			h.burn = 0
+			h.atk += 40
+			_heal(h, 300)
+			events.append({"t": "phase2", "hero": h.uid, "label": "ФАЗА 3", "text": "Последний свет: снимает Яд и Горение, лечит 300 HP, Атака +40"})
+	elif h.get("boss", false) and h.phase == 1 and h.hp > 0 and h.hp * 2 < h.max_hp:
 		_phase_two(h)
 	return n
 
@@ -1068,6 +1158,8 @@ func _check_death(h: Dictionary) -> bool:
 	var s := 1
 	if h.id == "chosen":
 		s = 25
+	elif h.trait == "boss_final":
+		s = 50
 	elif h.get("boss", false):
 		s = 10
 	elif kind == "elite" or h.get("squad", false):
@@ -1091,6 +1183,12 @@ func _check_death(h: Dictionary) -> bool:
 			Game.unlock_achievement("mika_clean")
 	if h.id == "chosen":
 		Game.unlock_achievement("chosen_kill")
+	if h.trait == "boss_final":
+		for o in heroes:
+			if o.state in ["wait", "walk", "exit"]:
+				o.state = "fled"
+				events.append({"t": "escape", "hero": o.uid, "greed": 0})
+		events.append({"t": "msg", "text": "Император пал — свита бежит без добычи!"})
 	if h.id == "mage":
 		for o in heroes:
 			if o.id == "bard" and o.state in ["wait", "walk"]:
@@ -1331,7 +1429,7 @@ func _end_hall() -> void:
 		h.extra_trait = ""
 		if Game.run.get("master", "") == "alchemist":
 			h.poison = maxi(0, h.poison - POISON_STEP)
-		if h.trait == "boss_pirate" and hall < HALLS - 1:
+		if h.trait == "boss_pirate" and hall < halls - 1:
 			var stolen = Game.steal_card()
 			if stolen != null:
 				_remove_everywhere(int(stolen.uid))
@@ -1341,7 +1439,7 @@ func _end_hall() -> void:
 	if alive == 0:
 		_finish()
 		return
-	if hall >= HALLS:
+	if hall >= halls:
 		for h in heroes:
 			if h.state == "exit" or h.state == "walk" or h.state == "wait":
 				_escape(h)
@@ -1370,6 +1468,13 @@ func _finish() -> void:
 	phase = "done"
 	if Game.run.treasury <= 0:
 		result = "lose"
+	elif node_type == "final":
+		result = "lose"
+		for h in heroes:
+			if h.trait == "boss_final":
+				last_final = {"stage": mini(hall + 1, halls), "hp": maxf(0.0, float(h.hp) / float(h.max_hp))}
+				if h.state == "dead":
+					result = "win"
 	elif killed.size() > 0:
 		result = "win"
 	else:

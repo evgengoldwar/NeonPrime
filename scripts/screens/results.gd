@@ -9,18 +9,30 @@ func _ready() -> void:
 	var won: bool = r.get("won", false)
 	Sfx.stop_music()
 	Sfx.play("kill" if won else "lose")
-	var lay := UI.screen_layout(self, "Победа!" if won else "Поражение")
+	var final: bool = r.get("final", false)
+	var heading := "Победа!" if won else "Поражение"
+	if final:
+		heading = "Император повержен!" if won else "Рассвет победил"
+	var lay := UI.screen_layout(self, heading)
 	var body: VBoxContainer = lay.body
 	var m: Dictionary = Data.masters.get(r.get("master", "dark_lord"), {})
-	body.add_child(UI.label(("Подземелье выстояло. " if won else "Казна опустела. ") + "Хозяин: " + m.get("name", ""), 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	body.add_child(UI.center(UI.icon("masters/" + str(r.get("master", "dark_lord")), 12)))
+	if final:
+		body.add_child(UI.center(UI.hero_icon("emperor", 12)))
+		var txt := "Солнечный Император не устоял перед Тьмой." if won else "Император пережил все этапы и унёс Казну. Попробуй снова."
+		if r.get("first_final", false):
+			txt = "Эпоха героев окончена. Больше никто не посмеет войти в твоё подземелье.\nСпасибо, что прошёл игру!"
+		body.add_child(UI.label(txt, 26, UI.GOLD if won else UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		body.add_child(UI.label(("Подземелье выстояло. " if won else "Казна опустела. ") + "Хозяин: " + m.get("name", ""), 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		body.add_child(UI.center(UI.icon("masters/" + str(r.get("master", "dark_lord")), 12)))
 	var p := UI.framed("panel", 16)
 	var v := UI.vbox(8)
 	p.add_child(v)
 	var path := []
 	for step in r.get("path", []):
 		path.append("Этаж %d: %s" % [int(step.floor), Data.locations[step.location].name])
-	v.add_child(UI.label("Пройденный путь:\n" + "\n".join(path), 22))
+	if not path.is_empty():
+		v.add_child(UI.label("Пройденный путь:\n" + "\n".join(path), 22))
 	v.add_child(UI.label("Убито героев: %d" % int(r.get("kills", 0)), 22))
 	v.add_child(UI.label("Лучшее комбо: ×%d" % int(r.get("best_combo", 0)), 22))
 	if won:

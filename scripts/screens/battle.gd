@@ -197,7 +197,10 @@ func _build(loc: Dictionary) -> void:
 
 func _refresh() -> void:
 	top_treasury.text = str(int(Game.run.treasury))
-	top_hall.text = "ЗАЛ %d/3" % mini(b.hall + 1, 3)
+	if b.node_type == "final":
+		top_hall.text = "ЭТАП %d/%d · %s" % [mini(b.hall + 1, b.halls), b.halls, b.final_stage_name()]
+	else:
+		top_hall.text = "ЗАЛ %d/%d" % [mini(b.hall + 1, b.halls), b.halls]
 	if Game.run.get("location", "") != "":
 		top_hall.text += " · " + Data.locations[Game.run.location].name
 	_refresh_heroes()
@@ -223,32 +226,43 @@ func _hero_panel(h: Dictionary) -> Control:
 	var dead: bool = h.state == "dead"
 	var fled: bool = h.state == "fled"
 	var solo: bool = b.heroes.size() == 1
+	# 3 и больше героев (отряд, свита Императора): узкие панели без переносов.
+	var compact: bool = b.heroes.size() >= 3
 	var fr := "panel"
 	if h.get("boss", false):
 		fr = "card_monster"
 	elif h.kind == "elite":
 		fr = "popup"
-	var p := UI.framed(fr, 10)
+	var p := UI.framed(fr, 6 if compact else 10)
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if compact:
+		p.custom_minimum_size.x = 60
+		p.size_flags_stretch_ratio = 1.6 if h.get("boss", false) else 1.0
 	if dead or fled:
 		p.modulate = Color(1, 1, 1, 0.35)
-	var hb := UI.hbox(10)
+	var hb := UI.hbox(6 if compact else 10)
 	p.add_child(hb)
-	var portrait := UI.framed("panel_dark", 4)
+	var portrait := UI.framed("panel_dark", 2 if compact else 4)
 	portrait.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	portrait.add_child(UI.hero_icon(h.id, 7 if solo else 5))
+	portrait.add_child(UI.hero_icon(h.id, 7 if solo else (3 if compact else 5)))
 	hb.add_child(portrait)
 	var v := UI.vbox(4)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(v)
 	var title_text: String = h.name
-	if h.get("boss", false) and h.phase == 2:
-		title_text += " II"
+	if h.get("boss", false) and int(h.phase) >= 2:
+		title_text += " " + "I".repeat(int(h.phase))
 	if dead:
 		title_text += " — пал"
 	elif fled:
 		title_text += " — сбежал"
-	v.add_child(UI.label(title_text, 24, UI.GOLD if h.get("boss", false) or h.kind == "elite" else UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, false))
+	var tl := UI.label(title_text, 24, UI.GOLD if h.get("boss", false) or h.kind == "elite" else UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, false)
+	if compact:
+		tl.clip_text = true
+		tl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		tl.custom_minimum_size.x = 0
+		tl.add_theme_font_size_override("font_size", 20)
+	v.add_child(tl)
 	var bar_box := Control.new()
 	bar_box.custom_minimum_size = Vector2(0, 20)
 	var bar := ProgressBar.new()
@@ -264,11 +278,18 @@ func _hero_panel(h: Dictionary) -> Control:
 	hp_l.add_theme_constant_override("outline_size", 4)
 	bar_box.add_child(hp_l)
 	v.add_child(bar_box)
-	var stats := UI.hbox(12)
+	var stats: Container = UI.hbox(12)
+	if compact:
+		stats = HFlowContainer.new()
+		stats.add_theme_constant_override("h_separation", 6)
+		stats.add_theme_constant_override("v_separation", 0)
 	stats.add_child(UI.stat("sword", str(h.atk + 10 * h.rage), UI.TEXT, 24))
 	stats.add_child(UI.stat("greed", str(h.greed), UI.GOLD, 24))
 	if h.armor > 0:
 		stats.add_child(UI.stat("armor", str(h.armor), UI.SOUL, 24))
+	if compact:
+		for sc in stats.get_children():
+			(sc.get_child(1) as Label).add_theme_font_size_override("font_size", 20)
 	v.add_child(stats)
 	var st := _status_row(h)
 	if st.get_child_count() > 0:
@@ -805,8 +826,8 @@ func _after_tick() -> void:
 	_refresh()
 	if b.phase == "prep":
 		Game.save_run()
-		if b.hall > 0:
-			_log("Зал %d из 3 — готовь новую выкладку" % (b.hall + 1))
+		if b.hall > 0 and b.node_type != "final":
+			_log("Зал %d из %d — готовь новую выкладку" % [b.hall + 1, b.halls])
 	elif b.phase == "done":
 		_finish()
 
@@ -878,8 +899,9 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 				if str(e.get("text", "")) != "" and not quiet:
 					_log("%s: %+d золота" % [str(e.text), int(e.n)])
 			"escape":
-				Sfx.play("lose")
-				Game.main.toast("Герой сбежал и унёс %d золота" % int(e.greed), "bad")
+				if int(e.greed) > 0:
+					Sfx.play("lose")
+					Game.main.toast("Герой сбежал и унёс %d золота" % int(e.greed), "bad")
 			"combo":
 				if not quiet:
 					_combo(int(e.n))
@@ -902,6 +924,8 @@ func _play_events(evs: Array, quiet: bool = false) -> void:
 				Game.main.toast(str(e.text), "good")
 			"phase2":
 				_phase2(e)
+			"stage":
+				_stage_banner(e)
 			"msg":
 				_log(str(e.text))
 			"spell":
@@ -1157,7 +1181,41 @@ func _phase2(e: Dictionary) -> void:
 	tw.tween_property(flash, "color:a", 0.0, 0.6)
 	tw.tween_callback(flash.queue_free)
 	var h: Dictionary = b.hero_by_uid(e.hero)
-	Game.main.toast("%s: ФАЗА 2! %s" % [h.get("name", "Босс"), str(e.text)], "bad")
+	Game.main.toast("%s: %s! %s" % [h.get("name", "Босс"), str(e.get("label", "ФАЗА 2")), str(e.text)], "bad")
+
+
+## Баннер нового этапа финального боя: номер, название и усложнение.
+func _stage_banner(e: Dictionary) -> void:
+	if int(e.n) == 0:
+		return
+	Sfx.play("boss", 1.2)
+	Game.vibrate(80)
+	var p := UI.framed("popup", 16)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var v := UI.vbox(6)
+	p.add_child(v)
+	var t := UI.label("ЭТАП %d/%d · %s" % [int(e.n) + 1, int(e.total), str(e.name)], 24, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER, false)
+	t.add_theme_font_override("font", UI.pixel_font())
+	t.add_theme_font_size_override("font_size", 32)
+	v.add_child(t)
+	v.add_child(UI.label(str(e.text), 24, UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	UI.ignore_mouse(p)
+	p.custom_minimum_size = Vector2(minf(size.x - 40, 640), 0)
+	var cc := CenterContainer.new()
+	UI.full(cc)
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cc.add_child(p)
+	fx_layer.add_child(cc)
+	cc.pivot_offset = size / 2
+	cc.scale = Vector2(0.6, 0.6)
+	cc.modulate.a = 0.0
+	var tw := cc.create_tween()
+	tw.tween_property(cc, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(cc, "modulate:a", 1.0, 0.2)
+	tw.tween_interval(2.2)
+	tw.tween_property(cc, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(cc.queue_free)
+	_log("%s: %s" % [str(e.name), str(e.text)])
 
 
 func _boss_intro() -> void:
@@ -1185,6 +1243,10 @@ func _boss_intro() -> void:
 	stats.add_child(UI.stat("sword", str(h.atk), UI.TEXT, 32))
 	stats.add_child(UI.stat("greed", str(h.greed), UI.GOLD, 32))
 	v.add_child(stats)
+	if b.node_type == "final":
+		var fl := UI.label("Финальный бой: %d этапов, 3 фазы. Убей Императора до конца последнего этапа — иначе он унесёт всю Казну." % b.halls, 24, UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+		fl.custom_minimum_size = Vector2(600, 0)
+		v.add_child(fl)
 	_intro = ov
 	ov.gui_input.connect(_intro_input)
 	get_tree().create_timer(3.0).timeout.connect(_close_intro)

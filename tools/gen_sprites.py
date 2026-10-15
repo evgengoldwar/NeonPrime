@@ -873,6 +873,7 @@ HEROES = {
     "aurelius": ({"H": "y", "A": "w", "a": "y", "L": "y"}, ["cape", "crown", "shield", "sword"]),
     "irsa": ({"H": "c", "A": "w", "a": "c", "L": "b"}, ["crown", "bow"]),
     "chosen": ({"H": "w", "A": "w", "a": "y", "L": "G", "s": "G"}, ["cape", "crown", "sword", "eyes_glow"]),
+    "emperor": ({"H": "y", "A": "y", "a": "w", "L": "y"}, ["cape", "crown", "sword", "holy", "eyes_glow"]),
 }
 
 MASTERS = {

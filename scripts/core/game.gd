@@ -74,6 +74,7 @@ func weighted(weights: Dictionary) -> String:
 func default_meta() -> Dictionary:
 	return {
 		"souls": 0, "wings": [], "upgrades": {}, "trophies": {}, "notoriety_max": 0,
+		"notoriety_by": {}, "notoriety_won": {}, "notoriety_picks": {}, "final_wins": 0, "final_tries": 0,
 		"wins": 0, "runs": 0, "kills": 0, "tutorial_done": false, "achievements": [],
 		"daily": {"date": "", "done": false, "best": []},
 		"settings": {"sound": true, "music": true, "vibration": true, "speed": 1, "lang": "ru"},
@@ -89,10 +90,58 @@ func load_meta() -> void:
 			d = Data.normalize(d)
 			for k in d.keys():
 				meta[k] = d[k]
+			if not d.has("notoriety_by"):
+				_migrate_notoriety(int(d.get("notoriety_max", 0)), int(d.get("notoriety_pick", 0)))
 	var defaults := default_meta()
 	for k in defaults.settings.keys():
 		if not meta.settings.has(k):
 			meta.settings[k] = defaults.settings[k]
+
+
+## Раньше Дурная слава была общей. Открытый уровень переносим каждому Хозяину,
+## но победой на нём считается только уровень ниже: максимальный надо выиграть заново.
+func _migrate_notoriety(old_max: int, old_pick: int) -> void:
+	for m in Data.master_list:
+		meta.notoriety_by[m.id] = old_max
+		meta.notoriety_won[m.id] = old_max - 1 if old_max > 0 else -1
+		meta.notoriety_picks[m.id] = mini(old_pick, old_max)
+
+
+# ---------------------------------------------------------------- Дурная слава по Хозяевам
+
+const NOTORIETY_TOP := 10
+
+
+## Самый высокий открытый уровень славы у Хозяина (0–10).
+func notoriety_open(mid: String) -> int:
+	return int(meta.notoriety_by.get(mid, 0))
+
+
+## Самый высокий уровень, на котором Хозяин выиграл забег (−1 — ещё ни одной победы).
+func notoriety_won(mid: String) -> int:
+	return int(meta.notoriety_won.get(mid, -1))
+
+
+func notoriety_pick(mid: String) -> int:
+	return mini(int(meta.notoriety_picks.get(mid, notoriety_open(mid))), notoriety_open(mid))
+
+
+func set_notoriety_pick(mid: String, n: int) -> void:
+	meta.notoriety_picks[mid] = clampi(n, 0, notoriety_open(mid))
+	save_meta()
+
+
+## Хозяин покорил славу: выиграл забег на 10-м уровне.
+func master_conquered(mid: String) -> bool:
+	return notoriety_won(mid) >= NOTORIETY_TOP
+
+
+## Финальный бой открыт, когда каждый Хозяин выиграл на славе 10.
+func final_unlocked() -> bool:
+	for m in Data.master_list:
+		if not master_conquered(m.id):
+			return false
+	return true
 
 
 func save_meta() -> void:
@@ -206,6 +255,43 @@ func new_run(master_id: String, notoriety: int, opts: Dictionary = {}) -> void:
 	meta.runs = int(meta.runs) + 1
 	save_meta()
 	start_floor()
+
+
+# ================================================================ финальный бой
+
+## Колода финального боя: легендарные, эпические и лучшие карты игры, все в версии «+».
+const FINAL_DECK := [
+	"lich", "cauldron", "alpha_beast", "mech_golem",
+	"necro_circle", "catalyst", "pack_leader", "gear",
+	"banshee", "spider_nest", "spring_plate", "mutation_flask", "curse", "dark_altar",
+	"poison_fog", "flamethrower", "crusher", "lava", "dark_ritual", "spikes",
+]
+const FINAL_TREASURY := 1500
+
+
+## Один бой против Солнечного Императора: без карты этажа, сразу в бой.
+func start_final(opts: Dictionary = {}) -> void:
+	battle = null
+	pending = {}
+	var seed_val: int = opts.get("seed", int(Time.get_unix_time_from_system() * 1000) ^ randi())
+	rng.seed = seed_val
+	run = {
+		"master": "dark_lord", "notoriety": 0, "daily": false, "final": true,
+		"daily_mod": "none", "floors_total": 1,
+		"seed": str(seed_val), "floor": 3, "location": "", "location_options": [],
+		"map": {}, "current": -1, "treasury": FINAL_TREASURY, "souls": 0, "deck": [], "relics": [],
+		"next_uid": 1, "egg_growth": 0, "dragon_hatched": false, "dragon_up": false,
+		"removal_count": 0, "reroll_floor": -1, "floor_flags": {}, "next_hero_hp_mod": 0,
+		"father_in": -1, "pending_curse": 0, "squire_bonus": false, "killed_traits": [],
+		"stolen": [], "best_combo": 0, "kills_count": 0, "path": [], "battles_done": 0,
+		"mika_stole": false, "screen": "battle", "unlocked_now": [], "chosen_done": true,
+	}
+	for id in FINAL_DECK:
+		run.deck.append({"uid": next_uid(), "id": id, "up": true, "lvl": card_level_for(id, "")})
+	meta.final_tries = int(meta.get("final_tries", 0)) + 1
+	save_meta()
+	start_battle("final", 0)
+	save_run()
 
 
 func clear_run() -> void:
@@ -601,6 +687,9 @@ func make_encounter(type: String, row: int) -> Array:
 	if type == "chosen":
 		list.append(make_hero("chosen", f, row, {"boss": true}))
 		return list
+	if type == "final":
+		list.append(make_hero("emperor", f, row, {"boss": true}))
+		return list
 	if int(run.father_in) == 0:
 		run.father_in = -1
 		var p := make_hero("paladin", f, row, {})
@@ -669,7 +758,7 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 	if nt >= 9:
 		atk += 10
 	var mods: Array = opts.get("mods", []).duplicate()
-	if opts.get("boss", false) and nt >= 6 and id != "chosen":
+	if opts.get("boss", false) and nt >= 6 and id != "chosen" and id != "emperor":
 		mods.append(rpick(["armored", "fearless", "antidote", "fireproof", "avenger"]))
 	if "greedy" in mods:
 		greed *= 2
@@ -678,7 +767,7 @@ func make_hero(id: String, f: int, row: int, opts: Dictionary) -> Dictionary:
 		"boss": opts.get("boss", false), "squad": opts.get("squad", false), "trait": d.trait,
 		"hp": int(ceil(hp)), "atk": atk, "greed": int(ceil(greed)), "mods": mods, "color": d.get("color", "#cccccc"),
 	}
-	if id == "chosen":
+	if id == "chosen" or id == "emperor":
 		h.greed = maxi(1, int(run.treasury))
 	if id == "mage" and has_collection("mage"):
 		h.hp -= 20
@@ -714,6 +803,9 @@ func battle_finished() -> void:
 		run.screen = run.get("after_tutorial", "location")
 		save_run()
 		main.goto("tutorial_done")
+		return
+	if run.get("final", false):
+		end_run(b.result == "win")
 		return
 	if b.result == "lose" or int(run.treasury) <= 0:
 		end_run(false)
@@ -940,15 +1032,37 @@ func end_run(won: bool) -> void:
 	if won:
 		meta.wins = int(meta.wins) + 1
 		unlock_achievement("first_win")
-		if int(run.notoriety) >= int(meta.notoriety_max) and int(meta.notoriety_max) < 10:
-			meta.notoriety_max = int(run.notoriety) + 1
-			unlocked.append("Дурная слава: уровень %d" % int(meta.notoriety_max))
+		if not run.get("daily", false) and not run.get("final", false):
+			var mid: String = run.master
+			var nt := int(run.notoriety)
+			var mname: String = Data.masters[mid].name
+			var was_final := final_unlocked()
+			if nt > notoriety_won(mid):
+				meta.notoriety_won[mid] = nt
+				if nt >= NOTORIETY_TOP:
+					unlocked.append("%s покорил Дурную славу 10!" % mname)
+			if nt >= notoriety_open(mid) and notoriety_open(mid) < NOTORIETY_TOP:
+				meta.notoriety_by[mid] = nt + 1
+				meta.notoriety_picks[mid] = nt + 1
+				unlocked.append("%s: Дурная слава %d" % [mname, nt + 1])
+			meta.notoriety_max = maxi(int(meta.notoriety_max), notoriety_open(mid))
+			if not was_final and final_unlocked():
+				unlocked.append("ОТКРЫТ ФИНАЛЬНЫЙ БОЙ! Ищи его во вкладке «Бой»")
+	var first_final := false
+	if run.get("final", false):
+		souls += 100 if won else 10
+		if won:
+			first_final = int(meta.get("final_wins", 0)) == 0
+			meta.final_wins = int(meta.get("final_wins", 0)) + 1
+			unlock_achievement("final_kill")
+			if first_final:
+				unlocked.append("Эпоха героев окончена! Солнечный Император повержен")
 	meta.souls = int(meta.souls) + souls
 	save_meta()
 	pending = {
 		"kind": "results", "won": won, "souls": souls, "path": run.path, "best_combo": run.best_combo,
 		"kills": run.kills_count, "unlocked": unlocked, "master": run.master, "treasury": run.treasury,
-		"daily": run.get("daily", false),
+		"daily": run.get("daily", false), "final": run.get("final", false), "first_final": first_final,
 	}
 	var rw := Progress.run_rewards(won, run)
 	pending["reward_gold"] = rw.gold

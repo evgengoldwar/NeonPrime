@@ -3,6 +3,7 @@ extends Control
 ## вкладки внизу (Магазин · Колода · Бой · Замок · Трофеи), сундуки с таймерами.
 
 const UI := preload("res://scripts/ui/ui.gd")
+const Battle := preload("res://scripts/core/battle.gd")
 const TABS := [
 	["shop", "Магазин", "icons/tab_shop"],
 	["deck", "Карты", "icons/tab_deck"],
@@ -245,6 +246,7 @@ func _home() -> void:
 	go.disabled = not Game.master_unlocked(m.id)
 	UI.tint_button(go, UI.GOLD)
 	body.add_child(go)
+	body.add_child(_final_strip())
 	var tip := UI.label("Совет: " + TIPS[int(Time.get_unix_time_from_system() / 20) % TIPS.size()], 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	body.add_child(tip)
 	body.add_child(UI.spacer(0, true))
@@ -316,8 +318,150 @@ func _master_panel() -> Control:
 	for id in m.deck:
 		row.add_child(_deck_tile(id, Game.card_level_for(id, m.id)))
 	v.add_child(row)
-	v.add_child(_notoriety_row())
+	if unlocked:
+		v.add_child(_notoriety_row(m.id))
 	return p
+
+
+# ---------------------------------------------------------------- финальный бой
+
+func _conquered_count() -> int:
+	var n := 0
+	for m in Data.master_list:
+		if Game.master_conquered(m.id):
+			n += 1
+	return n
+
+
+## Полоска финального боя: портрет Императора, прогресс открытия, касание — подробности.
+func _final_strip() -> Control:
+	var open := Game.final_unlocked()
+	var p := UI.framed("card_selected" if open else "panel_dark", 8)
+	var h := UI.hbox(12)
+	p.add_child(h)
+	var ic := UI.hero_icon("emperor", 5)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if not open:
+		ic.modulate = Color(0.25, 0.22, 0.3)
+	h.add_child(ic)
+	var v := UI.vbox(4)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var t := UI.label("ФИНАЛЬНЫЙ БОЙ", 24, UI.GOLD if open else UI.DIM, HORIZONTAL_ALIGNMENT_LEFT, false)
+	t.add_theme_font_override("font", UI.pixel_font())
+	t.add_theme_font_size_override("font_size", 24)
+	v.add_child(t)
+	var sub := ""
+	if open:
+		sub = "Открыт! Коснись, чтобы сразиться с Императором"
+		if int(Game.meta.get("final_wins", 0)) > 0:
+			sub = "Император повержен ×%d · коснись для реванша" % int(Game.meta.final_wins)
+	else:
+		sub = "Покорено Хозяев: %d/%d · коснись — что осталось" % [_conquered_count(), Data.master_list.size()]
+	v.add_child(UI.label(sub, 18, UI.GREEN if open else UI.TEXT))
+	var pips := UI.hbox(6)
+	for m in Data.master_list:
+		var mi := UI.icon("masters/" + str(m.id), 2)
+		if not Game.master_conquered(m.id):
+			mi.modulate = Color(0.3, 0.28, 0.35)
+		pips.add_child(mi)
+	v.add_child(pips)
+	h.add_child(v)
+	UI.ignore_mouse(p)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	p.gui_input.connect(_final_input)
+	if open:
+		var tw := p.create_tween().set_loops()
+		tw.tween_property(p, "modulate", Color(1.15, 1.1, 0.95), 0.8)
+		tw.tween_property(p, "modulate", Color.WHITE, 0.8)
+	return p
+
+
+func _final_input(ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+		Sfx.play("click")
+		_final_popup()
+
+
+func _final_popup() -> void:
+	var open := Game.final_unlocked()
+	var p := UI.popup(self, "Финальный бой")
+	var box: VBoxContainer = p.box
+	var head := UI.hbox(14)
+	var port := UI.framed("card_monster", 8)
+	var ic := UI.hero_icon("emperor", 8)
+	if not open:
+		ic.modulate = Color(0.35, 0.3, 0.4)
+	port.add_child(ic)
+	port.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(port)
+	var hv := UI.vbox(6)
+	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var nm := UI.label(Data.final_boss.name, 24, UI.GOLD)
+	nm.add_theme_font_override("font", UI.pixel_font())
+	nm.add_theme_font_size_override("font_size", 24)
+	hv.add_child(nm)
+	hv.add_child(UI.label("«%s»" % Data.final_boss.quote, 20, UI.DIM))
+	head.add_child(hv)
+	box.add_child(head)
+	# Условия открытия по каждому Хозяину
+	box.add_child(UI.tag("УСЛОВИЕ ОТКРЫТИЯ", UI.GOLD, 16))
+	box.add_child(UI.label("Выиграй забег на Дурной славе 10 за каждого Хозяина. Открыть 10-й уровень мало — на нём нужно победить.", 20, UI.TEXT))
+	for m in Data.master_list:
+		var row := UI.hbox(10)
+		var mi := UI.icon("masters/" + str(m.id), 4)
+		mi.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(mi)
+		var rv := UI.vbox(0)
+		rv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rv.add_child(UI.label(m.name, 22, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, false))
+		var st := ""
+		var col := UI.DIM
+		if Game.master_conquered(m.id):
+			st = "Покорено: победа на славе 10"
+			col = UI.GREEN
+		elif not Game.master_unlocked(m.id):
+			st = "Хозяин ещё закрыт — открой его крыло в Замке"
+			col = UI.RED
+		else:
+			var won := Game.notoriety_won(m.id)
+			st = "Открыта слава %d · лучшая победа: %s" % [Game.notoriety_open(m.id), "нет" if won < 0 else "слава %d" % won]
+			col = Color("#f6757a")
+		rv.add_child(UI.label(st, 18, col))
+		row.add_child(rv)
+		var mark := UI.label("ГОТОВО" if Game.master_conquered(m.id) else "%d/10" % maxi(0, Game.notoriety_won(m.id)), 20,
+			UI.GREEN if Game.master_conquered(m.id) else UI.DIM, HORIZONTAL_ALIGNMENT_RIGHT, false)
+		mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(mark)
+		box.add_child(row)
+	# Как устроен бой
+	box.add_child(UI.tag("КАК УСТРОЕН БОЙ", UI.RED, 16))
+	box.add_child(UI.label("Один бой из %d этапов. Колода — %d лучших карт игры (легендарные и эпические), все в версии «+» и на твоём уровне. Казна %d. Если Император переживёт последний этап — унесёт всё." % [Battle.FINAL_STAGES.size(), Game.FINAL_DECK.size(), Game.FINAL_TREASURY], 20, UI.TEXT))
+	for i in Battle.FINAL_STAGES.size():
+		var stg: Array = Battle.FINAL_STAGES[i]
+		box.add_child(UI.label("%d. %s — %s" % [i + 1, stg[0], stg[1]], 18, UI.DIM))
+	var more := UI.button("Подробнее об Императоре", func(): UI.hero_popup(self, "emperor"), 22, 64)
+	box.add_child(more)
+	if open:
+		var go := UI.button("СРАЗИТЬСЯ", _final_go.bind(p.overlay), 32, 90)
+		go.add_theme_font_override("font", UI.pixel_font())
+		UI.tint_button(go, UI.GOLD)
+		box.add_child(go)
+
+
+func _final_go(ov: Node) -> void:
+	if Game.has_run():
+		var p := UI.popup(self, "Начать финальный бой?", "Отмена")
+		p.box.add_child(UI.label("Текущий забег будет потерян.", 22))
+		p.box.add_child(UI.tint_button(UI.button("Сразиться", _start_final), UI.RED))
+		return
+	ov.queue_free()
+	_start_final()
+
+
+func _start_final() -> void:
+	Game.clear_run()
+	Game.start_final()
+	Game.main.goto("battle")
 
 
 func _arrow(text: String, d: int) -> Button:
@@ -343,9 +487,9 @@ func _deck_tile(id: String, lvl: int) -> Control:
 
 
 ## Дурная слава одной строкой; подробности — по кнопке «?».
-func _notoriety_row() -> Control:
-	var cur := int(Game.meta.notoriety_pick)
-	var top_max := int(Game.meta.notoriety_max)
+func _notoriety_row(mid: String) -> Control:
+	var cur := Game.notoriety_pick(mid)
+	var top_max := Game.notoriety_open(mid)
 	var h := UI.hbox(6)
 	var minus := UI.button("−", _set_notoriety.bind(-1), 28, 56)
 	minus.custom_minimum_size = Vector2(60, 56)
@@ -353,7 +497,9 @@ func _notoriety_row() -> Control:
 	minus.disabled = cur <= 0
 	h.add_child(minus)
 	var text := "Дурная слава %d" % cur
-	if cur > 0:
+	if Game.master_conquered(mid):
+		text += " · покорена"
+	elif cur > 0:
 		text += " · Души +%d%%" % (cur * 10)
 	var l := UI.label(text, 22, UI.ACCENT.lightened(0.3) if cur > 0 else UI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -372,10 +518,14 @@ func _notoriety_row() -> Control:
 
 
 func _notoriety_help() -> void:
+	var m: Dictionary = Data.master_list[_master_idx]
 	var p := UI.popup(self, "Дурная слава")
-	var cur := int(Game.meta.notoriety_pick)
-	var top_max := int(Game.meta.notoriety_max)
-	p.box.add_child(UI.label("Каждая победа на максимальном уровне открывает следующий. Чем выше слава, тем злее герои и больше награда: Души +10% за уровень, с 3-го уровня за победу — Магический сундук.", 20, UI.TEXT))
+	var cur := Game.notoriety_pick(m.id)
+	var top_max := Game.notoriety_open(m.id)
+	var won := Game.notoriety_won(m.id)
+	p.box.add_child(UI.label("У каждого Хозяина своя Дурная слава. Победа на самом высоком открытом уровне открывает следующий. Чем выше слава, тем злее герои и больше награда: Души +10% за уровень, с 3-го уровня за победу — Магический сундук.", 20, UI.TEXT))
+	p.box.add_child(UI.label("%s: открыт уровень %d, лучшая победа — %s" % [m.name, top_max, "нет" if won < 0 else "на уровне %d" % won], 20, UI.GOLD))
+	p.box.add_child(UI.label("Выиграй на славе 10 за каждого Хозяина, чтобы открыть Финальный бой.", 20, UI.ACCENT.lightened(0.3)))
 	for i in Data.notoriety.size():
 		var col := Color("#f6757a") if i < cur else (UI.DIM if i < top_max else Color(0.45, 0.42, 0.5))
 		var suffix := "  (действует)" if i < cur else ("" if i < top_max else "  (закрыт)")
@@ -390,8 +540,8 @@ func _shift_master(d: int) -> void:
 
 
 func _set_notoriety(d: int) -> void:
-	Game.meta.notoriety_pick = clampi(int(Game.meta.notoriety_pick) + d, 0, int(Game.meta.notoriety_max))
-	Game.save_meta()
+	var mid: String = Data.master_list[_master_idx].id
+	Game.set_notoriety_pick(mid, Game.notoriety_pick(mid) + d)
 	_show("home")
 
 
@@ -412,7 +562,7 @@ func _battle() -> void:
 func _start_run() -> void:
 	Game.clear_run()
 	var m: Dictionary = Data.master_list[_master_idx]
-	Game.new_run(m.id, mini(int(Game.meta.notoriety_pick), int(Game.meta.notoriety_max)))
+	Game.new_run(m.id, Game.notoriety_pick(m.id))
 	Game.main.goto(Game.run.screen)
 
 

@@ -39,6 +39,8 @@ func _ready() -> void:
 	for u in Data.upgrades:
 		Game.meta.upgrades[u.id] = u.costs.size()
 	Game.meta.notoriety_max = 10
+	for m in Data.master_list:
+		Game.meta.notoriety_by[m.id] = 10
 	for s in ["castle", "trophies"]:
 		main.goto(s)
 		await _frames(2)
@@ -56,6 +58,20 @@ func _ready() -> void:
 	main.goto(Game.run.screen)
 	await _drive(1500)
 	print("SMOKE: ежедневное подземелье завершено")
+	# Финальный бой: открывается победой на славе 10 за всех Хозяев
+	for m in Data.master_list:
+		Game.meta.notoriety_won[m.id] = 10
+	if not Game.final_unlocked():
+		push_error("SMOKE: финальный бой не открылся")
+	for s in ["menu"]:
+		main.goto(s)
+		await _frames(2)
+	Game.clear_run()
+	Game.start_final()
+	main.goto("battle")
+	await _frames(2)
+	await _drive(3000)
+	print("SMOKE: финальный бой завершён, итог: ", Game.pending.get("won", "?"), " экран: ", _screen())
 	print("SMOKE: сундуки после забегов: ", Game.meta.chests, " золото ", Game.meta.gold, " кристаллы ", Game.meta.gems)
 	print("SMOKE ИТОГ: забегов %d, боёв %d, шагов %d" % [runs_done + 1, battles, steps])
 	get_tree().quit()

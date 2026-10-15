@@ -18,6 +18,8 @@ func _ready() -> void:
 	Game.meta.gems = 35
 	Game.meta.souls = 120
 	Game.meta.notoriety_max = 2
+	for m in Data.master_list:
+		Game.meta.notoriety_by[m.id] = 2
 	Game.meta.wings = ["crypt"]
 	Progress.ensure()
 	Progress.add_copies("bats", 6)

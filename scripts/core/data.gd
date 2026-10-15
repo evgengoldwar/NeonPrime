@@ -32,6 +32,7 @@ var classes := {}
 var locals := {}
 var bosses := {}
 var chosen := {}
+var final_boss := {}
 var elite_mods := []
 var squads := []
 var locations := {}
@@ -68,6 +69,8 @@ func _ready() -> void:
 		bosses[x.id] = x
 	chosen = h.chosen
 	chosen["kind"] = "boss"
+	final_boss = h.final
+	final_boss["kind"] = "boss"
 	elite_mods = h.elite_mods
 	squads = h.squads
 	var w = load_json("res://data/world.json")
@@ -350,6 +353,8 @@ func hero_def(id: String) -> Dictionary:
 		return bosses[id]
 	if id == "chosen":
 		return chosen
+	if id == "emperor":
+		return final_boss
 	return {}
 
 
