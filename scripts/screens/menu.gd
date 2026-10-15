@@ -39,7 +39,8 @@ var _master_idx := 0
 func _ready() -> void:
 	Sfx.music(1.0)
 	Progress.ensure()
-	_master_idx = maxi(0, _master_ids().find(str(Game.meta.master_pick)))
+	_master_idx = Data.master_list.size() if str(Game.meta.master_pick) == "final" \
+		else maxi(0, _master_ids().find(str(Game.meta.master_pick)))
 	UI.backdrop(self, "tiles/wall_menu", 0.35)
 	var m := MarginContainer.new()
 	m.anchor_left = 0.5
@@ -234,19 +235,18 @@ func _master_ids() -> Array:
 
 func _home() -> void:
 	var body := _page()
-	body.add_child(_master_panel())
+	var final := _is_final()
+	body.add_child(_final_panel() if final else _master_panel())
 	if Game.has_run():
 		var cont := UI.button("Продолжить забег", func(): Game.main.goto(Game.resume_screen()), 28, 80)
 		UI.tint_button(cont, UI.GREEN)
 		body.add_child(cont)
-	var m: Dictionary = Data.master_list[_master_idx]
-	var go := UI.button("В БОЙ!", _battle, 44, 116)
+	var go := UI.button("В БОЙ!", _final_battle if final else _battle, 44, 116)
 	go.add_theme_font_override("font", UI.pixel_font())
 	go.add_theme_font_size_override("font_size", UI.pfs(36))
-	go.disabled = not Game.master_unlocked(m.id)
-	UI.tint_button(go, UI.GOLD)
+	go.disabled = not Game.final_unlocked() if final else not Game.master_unlocked(Data.master_list[_master_idx].id)
+	UI.tint_button(go, UI.RED if final else UI.GOLD)
 	body.add_child(go)
-	body.add_child(_final_strip())
 	var tip := UI.label("Совет: " + TIPS[int(Time.get_unix_time_from_system() / 20) % TIPS.size()], 18, UI.DIM, HORIZONTAL_ALIGNMENT_CENTER)
 	body.add_child(tip)
 	body.add_child(UI.spacer(0, true))
@@ -294,7 +294,7 @@ func _master_panel() -> Control:
 	nm.add_theme_font_override("font", UI.pixel_font())
 	nm.add_theme_font_size_override("font_size", UI.pfs(24))
 	info.add_child(nm)
-	info.add_child(UI.label("%d / %d" % [_master_idx + 1, Data.master_list.size()], 16, UI.DIM))
+	info.add_child(UI.label("%d / %d" % [_master_idx + 1, Data.master_list.size() + 1], 16, UI.DIM))
 	if unlocked:
 		info.add_child(UI.label(m.passive_text, 18, UI.TEXT))
 		info.add_child(UI.label(Data.prog.affinity.get(m.id, {}).get("text", ""), 16, UI.GREEN))
@@ -333,53 +333,87 @@ func _conquered_count() -> int:
 	return n
 
 
-## Полоска финального боя: портрет Императора, прогресс открытия, касание — подробности.
-func _final_strip() -> Control:
+func _is_final() -> bool:
+	return _master_idx >= Data.master_list.size()
+
+
+## Седьмая страница карусели: Солнечный Император, что нужно для открытия и колода финала.
+func _final_panel() -> Control:
 	var open := Game.final_unlocked()
-	var p := UI.framed("card_selected" if open else "panel_dark", 8)
-	var h := UI.hbox(12)
-	p.add_child(h)
-	var ic := UI.hero_icon("emperor", 5)
-	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var p := UI.framed("card_selected" if open else "panel", 10)
+	var v := UI.vbox(8)
+	p.add_child(v)
+	var nav := UI.hbox(8)
+	v.add_child(nav)
+	nav.add_child(_arrow("<", -1))
+	var spr := UI.hero_icon("emperor", 10)
+	spr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if not open:
-		ic.modulate = Color(0.25, 0.22, 0.3)
-	h.add_child(ic)
-	var v := UI.vbox(4)
-	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var t := UI.label("ФИНАЛЬНЫЙ БОЙ", 24, UI.GOLD if open else UI.DIM, HORIZONTAL_ALIGNMENT_LEFT, false)
-	t.add_theme_font_override("font", UI.pixel_font())
-	t.add_theme_font_size_override("font_size", 24)
-	v.add_child(t)
-	var sub := ""
+		spr.modulate = Color(0, 0, 0, 0.85)
+	nav.add_child(spr)
+	var info := UI.vbox(2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var nm := UI.label("Финальный бой", 28, UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT)
+	nm.add_theme_font_override("font", UI.pixel_font())
+	nm.add_theme_font_size_override("font_size", UI.pfs(24))
+	info.add_child(nm)
+	info.add_child(UI.label("%d / %d" % [_master_idx + 1, Data.master_list.size() + 1], 16, UI.DIM))
+	info.add_child(UI.label("%s: один бой из %d этапов и 3 фаз" % [Data.final_boss.name, Battle.FINAL_STAGES.size()], 18, UI.TEXT))
 	if open:
-		sub = "Открыт! Коснись, чтобы сразиться с Императором"
-		if int(Game.meta.get("final_wins", 0)) > 0:
-			sub = "Император повержен ×%d · коснись для реванша" % int(Game.meta.final_wins)
+		var wins := int(Game.meta.get("final_wins", 0))
+		info.add_child(UI.label("Открыт! " + ("Побед: %d" % wins if wins > 0 else "Рассвет ждёт тебя"), 16, UI.GREEN))
 	else:
-		sub = "Покорено Хозяев: %d/%d · коснись — что осталось" % [_conquered_count(), Data.master_list.size()]
-	v.add_child(UI.label(sub, 18, UI.GREEN if open else UI.TEXT))
-	var pips := UI.hbox(6)
+		info.add_child(UI.label("Закрыт: победи на Дурной славе 10 за каждого Хозяина (%d/%d)" % [_conquered_count(), Data.master_list.size()], 16, UI.RED))
+	nav.add_child(info)
+	nav.add_child(_arrow(">", 1))
+	# Прогресс открытия: по плашке на Хозяина
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
 	for m in Data.master_list:
-		var mi := UI.icon("masters/" + str(m.id), 2)
-		if not Game.master_conquered(m.id):
-			mi.modulate = Color(0.3, 0.28, 0.35)
-		pips.add_child(mi)
-	v.add_child(pips)
-	h.add_child(v)
-	UI.ignore_mouse(p)
-	p.mouse_filter = Control.MOUSE_FILTER_STOP
-	p.gui_input.connect(_final_input)
-	if open:
-		var tw := p.create_tween().set_loops()
-		tw.tween_property(p, "modulate", Color(1.15, 1.1, 0.95), 0.8)
-		tw.tween_property(p, "modulate", Color.WHITE, 0.8)
+		var done := Game.master_conquered(m.id)
+		var cell := UI.framed("panel_dark", 4)
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var h := UI.hbox(6)
+		cell.add_child(h)
+		var mi := UI.icon("masters/" + str(m.id), 3)
+		if not Game.master_unlocked(m.id):
+			mi.modulate = Color(0, 0, 0, 0.85)
+		h.add_child(mi)
+		var txt := "ГОТОВО" if done else ("закрыт" if not Game.master_unlocked(m.id) else "%d/10" % maxi(0, Game.notoriety_won(m.id)))
+		var l := UI.label(txt, 20, UI.GREEN if done else (UI.RED if txt == "закрыт" else UI.DIM), HORIZONTAL_ALIGNMENT_LEFT, false)
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		h.add_child(l)
+		grid.add_child(cell)
+	v.add_child(grid)
+	# Колода финала: 20 лучших карт в две строки
+	var dh := UI.hbox(8)
+	var dl := UI.label("Колода финала · все карты «+» · коснись карты", 16, UI.DIM)
+	dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dh.add_child(dl)
+	dh.add_child(UI.stat("coin", "Казна %d" % Game.FINAL_TREASURY, UI.GOLD, 18))
+	v.add_child(dh)
+	var half: int = (Game.FINAL_DECK.size() + 1) / 2
+	for r in 2:
+		var row := UI.hbox(4)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		for k in range(r * half, mini((r + 1) * half, Game.FINAL_DECK.size())):
+			var id: String = Game.FINAL_DECK[k]
+			row.add_child(_deck_tile(id, Game.card_level_for(id, "")))
+		v.add_child(row)
+	var more := UI.button("Этапы, фазы и условия", _final_popup, 22, 60)
+	v.add_child(more)
 	return p
 
 
-func _final_input(ev: InputEvent) -> void:
-	if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-		Sfx.play("click")
-		_final_popup()
+func _final_battle() -> void:
+	if Game.has_run():
+		var p := UI.popup(self, "Начать финальный бой?", "Отмена")
+		p.box.add_child(UI.label("Текущий забег будет потерян.", 22))
+		p.box.add_child(UI.tint_button(UI.button("Сразиться", _start_final), UI.RED))
+		return
+	_start_final()
 
 
 func _final_popup() -> void:
@@ -442,20 +476,7 @@ func _final_popup() -> void:
 	var more := UI.button("Подробнее об Императоре", func(): UI.hero_popup(self, "emperor"), 22, 64)
 	box.add_child(more)
 	if open:
-		var go := UI.button("СРАЗИТЬСЯ", _final_go.bind(p.overlay), 32, 90)
-		go.add_theme_font_override("font", UI.pixel_font())
-		UI.tint_button(go, UI.GOLD)
-		box.add_child(go)
-
-
-func _final_go(ov: Node) -> void:
-	if Game.has_run():
-		var p := UI.popup(self, "Начать финальный бой?", "Отмена")
-		p.box.add_child(UI.label("Текущий забег будет потерян.", 22))
-		p.box.add_child(UI.tint_button(UI.button("Сразиться", _start_final), UI.RED))
-		return
-	ov.queue_free()
-	_start_final()
+		box.add_child(UI.label("Начать бой — кнопка «В БОЙ!» на этой странице.", 18, UI.GREEN, HORIZONTAL_ALIGNMENT_CENTER))
 
 
 func _start_final() -> void:
@@ -533,8 +554,8 @@ func _notoriety_help() -> void:
 
 
 func _shift_master(d: int) -> void:
-	_master_idx = posmod(_master_idx + d, Data.master_list.size())
-	Game.meta.master_pick = Data.master_list[_master_idx].id
+	_master_idx = posmod(_master_idx + d, Data.master_list.size() + 1)
+	Game.meta.master_pick = "final" if _is_final() else Data.master_list[_master_idx].id
 	Game.save_meta()
 	_show("home")
 
